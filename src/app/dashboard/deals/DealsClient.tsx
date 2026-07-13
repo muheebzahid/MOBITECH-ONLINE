@@ -164,7 +164,7 @@ function DealsClientInner({ deals, settings }: Props) {
   
   const totalRemainingUnits = deals.reduce((sum, deal) => {
     if (deal.status === 'DEAL_CLOSED') return sum
-    const invoicedQty = deal.invoice_line_items ? deal.invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sq:number, i:any) => sq + (i.quantity || 0), 0) : 0
+    const invoicedQty = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sq:number, i:any) => sq + (i.quantity || 0), 0) : 0
     const rem = deal.quantity - invoicedQty
     return sum + (rem > 0 ? rem : 0)
   }, 0)
