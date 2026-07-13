@@ -158,8 +158,8 @@ function DealsClientInner({ deals, settings }: Props) {
   // Deal counts
   const now30 = Date.now()
   const closedDeals       = deals.filter(d => d.status === 'DEAL_CLOSED').length
-  const unclosedFresh     = deals.filter(d => d.status !== 'DEAL_CLOSED' && (!d.payment_date || (now30 - new Date(d.payment_date).getTime()) < 30 * 86400_000)).length
-  const unclosedOverdue   = deals.filter(d => d.status !== 'DEAL_CLOSED' && d.payment_date && (now30 - new Date(d.payment_date).getTime()) >= 30 * 86400_000).length
+  const unclosedFresh     = deals.filter(d => d.status !== 'DEAL_CLOSED' && (!(d as any).payment_date || (now30 - new Date((d as any).payment_date).getTime()) < 30 * 86400_000)).length
+  const unclosedOverdue   = deals.filter(d => d.status !== 'DEAL_CLOSED' && (d as any).payment_date && (now30 - new Date((d as any).payment_date).getTime()) >= 30 * 86400_000).length
   const totalRevenue      = deals.reduce((s, d) => s + (d.total_revenue || 0), 0)
   
   const totalRemainingUnits = deals.reduce((sum, deal) => {
