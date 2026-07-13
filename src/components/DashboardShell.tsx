@@ -1,0 +1,124 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
+import Link from 'next/link'
+import type { User } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/client'
+import { useRole } from '@/components/RoleProvider'
+
+interface Props {
+  user: User
+  children: React.ReactNode
+}
+
+export default function DashboardShell({ user, children }: Props) {
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const router = useRouter()
+  const pathname = usePathname()
+  const supabase = createClient()
+  const role = useRole()
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
+  const allNavItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: '⊞', href: '/dashboard', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
+    { id: 'deals', label: 'Deals', icon: '◈', href: '/dashboard/deals', roles: ['SUPER_ADMIN', 'FINANCE'] },
+    { id: 'inventory', label: 'Inventory', icon: '📦', href: '/dashboard/inventory', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
+    { id: 'logistics', label: 'Logistics', icon: '◎', href: '/dashboard/logistics', roles: ['SUPER_ADMIN', 'FINANCE', 'LOGISTICS'] },
+    { id: 'sales', label: 'Sales Invoices', icon: '📄', href: '/dashboard/sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
+    { id: 'accounting', label: 'Accounting', icon: '📊', href: '/dashboard/accounting', roles: ['SUPER_ADMIN', 'FINANCE'] },
+    { id: 'partners', label: 'Partners', icon: '🤝', href: '/dashboard/partners', roles: ['SUPER_ADMIN', 'FINANCE'] },
+    { id: 'finance', label: 'Treasury', icon: '🏦', href: '/dashboard/finance', roles: ['SUPER_ADMIN', 'FINANCE'] },
+    { id: 'admin', label: 'Admin', icon: '⚙️', href: '/dashboard/admin', roles: ['SUPER_ADMIN'] }
+  ]
+
+  const navItems = allNavItems.filter(item => item.roles.includes(role))
+
+  return (
+    <div className="erp-root">
+      {/* Sidebar */}
+      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'}`}>
+        {/* Brand */}
+        <div className="sidebar-brand">
+          <div className="sidebar-logo">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+              <rect width="32" height="32" rx="8" fill="url(#sgrad)" />
+              <path d="M8 22L16 10L24 22H8Z" fill="white" opacity="0.9" />
+              <defs>
+                <linearGradient id="sgrad" x1="0" y1="0" x2="32" y2="32">
+                  <stop offset="0%" stopColor="#6366f1" />
+                  <stop offset="100%" stopColor="#8b5cf6" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          {sidebarOpen && (
+            <div className="sidebar-brand-text">
+              <span className="sidebar-brand-name">Mobitech</span>
+              <span className="sidebar-brand-sub">ERP Platform</span>
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <nav className="sidebar-nav">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                id={`nav-${item.id}`}
+                className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                {sidebarOpen && <span className="nav-label">{item.label}</span>}
+                {isActive && <span className="nav-indicator" />}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* User section */}
+        <div className="sidebar-user">
+          <div className="user-avatar">{user.email?.charAt(0).toUpperCase()}</div>
+          {sidebarOpen && (
+            <div className="user-info">
+              <span className="user-name">{user.email?.split('@')[0]}</span>
+              <span className="user-role">{role.replace('_', ' ')}</span>
+            </div>
+          )}
+          {sidebarOpen && (
+            <button id="logout-btn" onClick={handleLogout} className="logout-btn" title="Sign out">
+              ⏻
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="sidebar-overlay d-mobile-only" 
+          onClick={() => setSidebarOpen(false)} 
+        />
+      )}
+
+      {/* Main Content */}
+      <main className="erp-main">
+        <button 
+          className="mobile-sidebar-toggle d-mobile-only" 
+          onClick={() => setSidebarOpen(true)}
+        >
+          ☰ Menu
+        </button>
+        {children}
+      </main>
+    </div>
+  )
+}

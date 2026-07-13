@@ -1,0 +1,371 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+
+// ── Invoices ────────────────────────────────────────────────
+export async function getInvoices() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(`*, invoice_line_items(quantity, description, deals(model))`)
+    .order('created_at', { ascending: false })
+  
+  if (error) {
+    console.error('getInvoices error:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function getInvoiceById(id: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(`
+      *,
+      invoice_line_items(*, deals(deal_number, model, storage, grade)),
+      payments(*)
+    `)
+    .eq('id', id)
+    .single()
+    
+  if (error || !data) return null
+  return data
+}
+
+export async function createInvoice(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const payload = {
+    customer_name:    formData.get('customer_name') as string,
+    customer_email:   formData.get('customer_email') as string || null,
+    customer_address: formData.get('customer_address') as string || null,
+    customer_phone:   formData.get('customer_phone') as string || null,
+    issue_date:       formData.get('issue_date') as string || new Date().toISOString().split('T')[0],
+    due_date:         formData.get('due_date') as string || null,
+    notes:            formData.get('notes') as string || null,
+    created_by:       user.id
+  }
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert(payload)
+    .select()
+    .single()
+
+  if (error) return { error: error.message }
+  revalidatePath('/dashboard/sales')
+  return { success: true, invoice: data }
+}
+
+export async function uploadInvoiceDocument(invoiceId: string, formData: FormData) {
+  const file = formData.get('file') as File
+  if (!file) return { error: 'No file provided' }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${invoiceId}-${Date.now()}.${fileExt}`
+  const { error: uploadError } = await supabase.storage
+    .from('invoices')
+    .upload(fileName, file)
+  
+  if (uploadError) return { error: uploadError.message }
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('invoices')
+    .getPublicUrl(fileName)
+
+  const { error: updateError } = await supabase
+    .from('invoices')
+    .update({ pdf_url: publicUrl })
+    .eq('id', invoiceId)
+
+  if (updateError) return { error: updateError.message }
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true, url: publicUrl }
+}
+
+export async function removeInvoiceDocument(invoiceId: string, pdfUrl: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const fileName = pdfUrl.split('/').pop()
+  if (fileName) {
+    await supabase.storage.from('invoices').remove([fileName])
+  }
+
+  const { error } = await supabase.from('invoices').update({ pdf_url: null }).eq('id', invoiceId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  return { success: true }
+}
+
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+
+export async function deleteInvoice(invoiceId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  // Must be SUPER_ADMIN to delete
+  const { getUserRole } = await import('@/lib/admin/actions')
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN') return { error: 'Unauthorized to delete invoices.' }
+
+  // Bypass RLS to force delete from everywhere
+  const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data: items } = await supabaseAdmin.from('invoice_line_items').select('deal_id').eq('invoice_id', invoiceId)
+  const dealIds = items ? Array.from(new Set(items.map((i: any) => i.deal_id).filter(Boolean))) : []
+
+  const { error } = await supabaseAdmin.from('invoices').delete().eq('id', invoiceId)
+  if (error) return { error: error.message }
+
+  if (dealIds.length > 0) {
+    const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+    for (const dId of dealIds) await syncDealSoldStatus(dId as string)
+  }
+
+  revalidatePath('/dashboard/sales')
+  return { success: true }
+}
+
+export async function issueInvoice(id: string) {
+  const supabase = await createClient()
+  const { data: items } = await supabase.from('invoice_line_items').select('deal_id').eq('invoice_id', id)
+  const dealIds = items ? Array.from(new Set(items.map((i: any) => i.deal_id).filter(Boolean))) : []
+
+  const { error } = await supabase
+    .from('invoices')
+    .update({ status: 'ISSUED' })
+    .eq('id', id)
+    .eq('status', 'DRAFT') // Only issue if draft
+
+  if (error) return { error: error.message }
+
+  if (dealIds.length > 0) {
+    const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+    for (const dId of dealIds) await syncDealSoldStatus(dId as string)
+  }
+
+  revalidatePath('/dashboard/sales')
+  revalidatePath(`/dashboard/sales/${id}`)
+  return { success: true }
+}
+
+export async function updateInvoiceStatus(id: string, newStatus: string) {
+  const supabase = await createClient()
+  const { data: items } = await supabase.from('invoice_line_items').select('deal_id').eq('invoice_id', id)
+  const dealIds = items ? Array.from(new Set(items.map((i: any) => i.deal_id).filter(Boolean))) : []
+
+  const { error } = await supabase
+    .from('invoices')
+    .update({ status: newStatus })
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  if (dealIds.length > 0) {
+    const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+    for (const dId of dealIds) await syncDealSoldStatus(dId as string)
+  }
+
+  revalidatePath('/dashboard/sales')
+  revalidatePath(`/dashboard/sales/${id}`)
+  return { success: true }
+}
+
+// ── Line Items ──────────────────────────────────────────────
+export async function addLineItem(invoiceId: string, formData: FormData) {
+  const supabase = await createClient()
+  
+  const dealId = formData.get('deal_id') as string || null
+  const dealItemId = formData.get('deal_item_id') as string || null
+  const description = formData.get('description') as string
+  const quantity = parseInt(formData.get('quantity') as string) || 1
+  const unitPrice = parseFloat(formData.get('unit_price') as string) || 0
+
+  const payload: any = {
+    invoice_id: invoiceId,
+    deal_id: dealId === '' ? null : dealId,
+    description,
+    quantity,
+    unit_price: unitPrice
+  }
+  
+  if (dealItemId && dealItemId !== '') {
+    payload.deal_item_id = dealItemId
+  }
+
+  const { error } = await supabase.from('invoice_line_items').insert(payload)
+  if (error) return { error: error.message }
+  
+  if (dealId) {
+    const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+    await syncDealSoldStatus(dealId)
+  }
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true }
+}
+
+export async function removeLineItem(invoiceId: string, lineItemId: string) {
+  const supabase = await createClient()
+  const { data: oldItem } = await supabase.from('invoice_line_items').select('deal_id').eq('id', lineItemId).single()
+
+  const { error } = await supabase
+    .from('invoice_line_items')
+    .delete()
+    .eq('id', lineItemId)
+    .eq('invoice_id', invoiceId)
+    
+  if (error) return { error: error.message }
+  
+  if (oldItem?.deal_id) {
+    const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+    await syncDealSoldStatus(oldItem.deal_id)
+  }
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true }
+}
+
+export async function updateLineItemDeal(invoiceId: string, lineItemId: string, dealId: string | null, dealItemId: string | null = null) {
+  const supabase = await createClient()
+  const { data: oldItem } = await supabase.from('invoice_line_items').select('deal_id').eq('id', lineItemId).single()
+
+  const payload: any = { deal_id: dealId || null }
+  payload.deal_item_id = dealItemId || null
+
+  const { error } = await supabase
+    .from('invoice_line_items')
+    .update(payload)
+    .eq('id', lineItemId)
+    .eq('invoice_id', invoiceId)
+    
+  if (error) return { error: error.message }
+  
+  const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+  if (oldItem?.deal_id) await syncDealSoldStatus(oldItem.deal_id)
+  if (dealId) await syncDealSoldStatus(dealId)
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true }
+}
+
+// ── Payments ────────────────────────────────────────────────
+export async function recordPayment(invoiceId: string, formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const payload = {
+    invoice_id:       invoiceId,
+    amount:           parseFloat(formData.get('amount') as string) || 0,
+    payment_date:     formData.get('payment_date') as string || new Date().toISOString().split('T')[0],
+    payment_method:   formData.get('payment_method') as string,
+    reference_number: formData.get('reference_number') as string || null,
+    notes:            formData.get('notes') as string || null,
+    logged_by:        user.id
+  }
+
+  const { error } = await supabase.from('payments').insert(payload)
+  if (error) return { error: error.message }
+  
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true }
+}
+
+// ── Helpers ─────────────────────────────────────────────────
+export async function getAvailableDeals() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('deals')
+    .select(`
+      id, deal_number, model, storage, grade, quantity,
+      items:deal_items(*),
+      invoice_line_items(deal_id, deal_item_id, quantity, invoices!inner(status))
+    `)
+    .order('created_at', { ascending: false })
+  
+  if (error) {
+    console.error('Error fetching available deals:', error)
+    return []
+  }
+
+  // Calculate remaining quantities
+  return (data || []).map((deal: any) => {
+    // Only count active invoices (not cancelled/voided)
+    const activeLineItems = (deal.invoice_line_items || []).filter((li: any) => 
+      li.invoices?.status !== 'CANCELLED' && li.invoices?.status !== 'VOIDED'
+    )
+    
+    // For legacy scalar deals
+    const scalarAllocated = activeLineItems
+      .filter((li: any) => !li.deal_item_id)
+      .reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+    
+    deal.remaining_quantity = Math.max(0, (deal.quantity || 0) - scalarAllocated)
+
+    // For deal items (SKUs)
+    if (deal.items && deal.items.length > 0) {
+      deal.items = deal.items.map((item: any) => {
+        const itemAllocated = activeLineItems
+          .filter((li: any) => li.deal_item_id === item.id)
+          .reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+        
+        return {
+          ...item,
+          remaining_quantity: Math.max(0, (item.quantity || 0) - itemAllocated)
+        }
+      })
+    }
+
+    return deal
+  })
+}
+
+// ── Approvals ───────────────────────────────────────────────
+export async function getPendingInvoices() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('approval_status', 'PENDING_APPROVAL')
+    .order('created_at', { ascending: false })
+    
+  if (error) {
+    console.error('Error fetching pending invoices:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function updateInvoiceApproval(id: string, status: 'APPROVED' | 'REJECTED') {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('invoices')
+    .update({ approval_status: status })
+    .eq('id', id)
+    
+  if (error) throw error
+  revalidatePath('/dashboard/admin')
+  revalidatePath('/dashboard/sales')
+}
