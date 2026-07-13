@@ -96,6 +96,7 @@ export interface DealItem {
 }
 
 export interface Deal {
+  [key: string]: any
   id: string
   deal_number: string
   supplier: string

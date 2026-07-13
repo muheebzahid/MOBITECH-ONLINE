@@ -92,7 +92,7 @@ export default function SalesClient({ invoices, pendingInvoices = [] }: { invoic
               <div key={inv.id} style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-elevated)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <div style={{ fontWeight: 500 }}>{inv.customer_name}</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>{fmtDate(inv.created_at)}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>{fmtD(inv.created_at)}</div>
                 </div>
                 <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '12px' }}>
                   Awaiting Super Admin approval.

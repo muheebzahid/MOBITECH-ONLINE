@@ -478,8 +478,8 @@ export async function updateDeal(dealId: string, formData: FormData) {
     const newVal = String(updated[key] ?? '')
     if (oldVal !== newVal) {
       field_changes.push({
-        field: key,
-        label: LABELS[key] || key,
+        field: String(key),
+        label: (LABELS as any)[key] || String(key),
         old_value: oldVal,
         new_value: newVal,
       })

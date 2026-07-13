@@ -194,11 +194,11 @@ function DealsClientInner({ deals, settings }: Props) {
 
   let tQty = 0, tInvQty = 0, tInvVal = 0, tRem = 0, tCommitted = 0, tShipCost = 0, tStuck = 0, tProfit = 0
   filtered.forEach(deal => {
-    const invoicedQty = deal.invoice_line_items ? deal.invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sum:number, i:any) => sum + (i.quantity || 0), 0) : 0
-    const validLineItems = deal.invoice_line_items ? deal.invoice_line_items.filter((i:any) => i.invoices && i.invoices.status !== 'CANCELLED' && i.invoices.status !== 'VOIDED') : []
+    const invoicedQty = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sum:number, i:any) => sum + (i.quantity || 0), 0) : 0
+    const validLineItems = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices && i.invoices.status !== 'CANCELLED' && i.invoices.status !== 'VOIDED') : []
     const invoicedValue = validLineItems.reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.unit_price || 0)), 0)
     let dealShipmentCost = 0
-    const shipmentData = deal.shipment_deals?.[0]?.shipments
+    const shipmentData = (deal as any).shipment_deals?.[0]?.shipments
     if (shipmentData) {
       const totalShipmentCost = Number(shipmentData.total_logistics_cost) || 0
       const totalShipmentUnits = shipmentData.shipment_deals?.reduce((sum: number, sd: any) => sum + (Number(sd.deals?.quantity) || 0), 0) || 0
@@ -449,16 +449,16 @@ function DealsClientInner({ deals, settings }: Props) {
               {filtered.map(deal => {
                 const st = DEAL_STATUSES[deal.status]
                 const isDealUnclosed = deal.status !== 'DEAL_CLOSED'
-                const shipmentId = deal.shipment_deals?.[0]?.shipments?.id
-                const invoicedQty = deal.invoice_line_items ? deal.invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sum:number, i:any) => sum + (i.quantity || 0), 0) : 0
-                const validLineItems = deal.invoice_line_items ? deal.invoice_line_items.filter((i:any) => i.invoices && i.invoices.status !== 'CANCELLED' && i.invoices.status !== 'VOIDED') : []
+                const shipmentId = (deal as any).shipment_deals?.[0]?.shipments?.id
+                const invoicedQty = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sum:number, i:any) => sum + (i.quantity || 0), 0) : 0
+                const validLineItems = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices && i.invoices.status !== 'CANCELLED' && i.invoices.status !== 'VOIDED') : []
                 const invoicedValue = validLineItems.reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.unit_price || 0)), 0)
                 const remainingQty = deal.quantity - invoicedQty
                 const stuckCapital = deal.total_commitment - invoicedValue
                 
                 let shipmentUnitCost = 0
                 let dealShipmentCost = 0
-                const shipmentData = deal.shipment_deals?.[0]?.shipments
+                const shipmentData = (deal as any).shipment_deals?.[0]?.shipments
                 if (shipmentData) {
                   const totalShipmentCost = Number(shipmentData.total_logistics_cost) || 0
                   const totalShipmentUnits = shipmentData.shipment_deals?.reduce((sum: number, sd: any) => sum + (Number(sd.deals?.quantity) || 0), 0) || 0
@@ -490,7 +490,7 @@ function DealsClientInner({ deals, settings }: Props) {
                         <a href={`/dashboard/deals/${deal.id}`} className="deal-number-link">
                           {deal.deal_number}
                         </a>
-                        {deal.shipment_deals && deal.shipment_deals.map((sd: any) => sd.shipments && (
+                        {(deal as any).shipment_deals && (deal as any).shipment_deals.map((sd: any) => sd.shipments && (
                           <a key={sd.shipments.id} href={`/dashboard/logistics/${sd.shipments.id}`} className="deal-number-link" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                             📦 {sd.shipments.shipment_number}
                           </a>
@@ -498,12 +498,12 @@ function DealsClientInner({ deals, settings }: Props) {
                       </div>
                     </td>
                     <td>
-                      {deal.items && deal.items.length > 1 ? (
+                      {(deal as any).items && (deal as any).items.length > 1 ? (
                         <div className="mixed-lot-container">
                           <div className="deal-model">Mixed Lot</div>
-                          <div className="deal-model-sub">{deal.items.length} items (Hover)</div>
+                          <div className="deal-model-sub">{(deal as any).items.length} items (Hover)</div>
                           <div className="mixed-lot-tooltip">
-                            {deal.items.map((item, idx) => {
+                            {(deal as any).items.map((item: any, idx: number) => {
                               const modelStr = item.model.replace(/iPhone\s*/i, '').toUpperCase()
                               return (
                                 <div key={item.id || idx} style={{ fontSize: '0.85rem', lineHeight: '1.2', fontWeight: 500, color: 'var(--text-primary)' }}>

@@ -62,7 +62,7 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
       const result = await addLineItem(invoice.id, fd)
       if (result.error) { setError(result.error); return }
       setShowLineItem(false)
-      setLiForm({ deal_id: '', description: '', quantity: '1', unit_price: '' })
+      setLiForm({ deal_id: '', deal_item_id: '', description: '', quantity: '1', unit_price: '' })
     })
   }
 
