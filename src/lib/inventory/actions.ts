@@ -121,3 +121,38 @@ export async function updateInventoryLocation(itemId: string, newLocation: strin
   revalidatePath('/dashboard/inventory')
   return { success: true }
 }
+
+export async function updateRefurbStage(itemId: string, newStage: string, updates: { repair_cost?: number, qc_document_url?: string } = {}) {
+  const supabase = await createClient()
+  
+  const payload: any = { refurb_stage: newStage }
+  if (updates.repair_cost !== undefined) payload.repair_cost = updates.repair_cost
+  if (updates.qc_document_url !== undefined) payload.qc_document_url = updates.qc_document_url
+
+  const { error } = await supabase
+    .from('inventory_items')
+    .update(payload)
+    .eq('id', itemId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/dashboard/inventory')
+  return { success: true }
+}
+
+export async function deleteInventoryItem(itemId: string) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('inventory_items')
+    .delete()
+    .eq('id', itemId)
+
+  if (error) {
+    console.error('deleteInventoryItem error:', error)
+    return { error: error.message }
+  }
+
+  revalidatePath('/dashboard/inventory')
+  return { success: true }
+}

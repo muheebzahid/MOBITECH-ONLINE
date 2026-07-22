@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS operating_expenses (
   amount            NUMERIC(12,2) NOT NULL,
   expense_date      DATE NOT NULL DEFAULT CURRENT_DATE,
   logged_by         UUID REFERENCES auth.users(id),
+  reference_link    TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );

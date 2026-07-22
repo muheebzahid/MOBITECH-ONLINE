@@ -120,40 +120,40 @@ create policy "Super admin can view audit logs"
 -- =============================================
 -- 6. CREATE MUHEEB'S PROFILE (Super Admin)
 -- =============================================
-insert into user_profiles (id, full_name, role_id, company_id)
-values (
-  '23ee6d50-a842-4d63-9c7f-7580f1e68c2b',
-  'Muheeb',
-  (select id from roles where name = 'super_admin'),
-  (select id from companies where name = 'Mobitech Wireless')
-);
+-- insert into user_profiles (id, full_name, role_id, company_id)
+-- values (
+--   '23ee6d50-a842-4d63-9c7f-7580f1e68c2b',
+--   'Muheeb',
+--   (select id from roles where name = 'super_admin'),
+--   (select id from companies where name = 'Mobitech Wireless')
+-- );
 
 -- =============================================
 -- 7. INSERT PARTNERS (with Muheeb linked)
 -- =============================================
-insert into partners (name, user_profile_id, ownership_percentage, monthly_salary_aed, is_working_partner)
-values
-  (
-    'Muheeb',
-    '23ee6d50-a842-4d63-9c7f-7580f1e68c2b',
-    33.33,
-    15000.00,
-    true
-  ),
-  (
-    'Beshair',
-    null,
-    33.33,
-    0.00,
-    false
-  ),
-  (
-    'Faisal',
-    null,
-    33.33,
-    0.00,
-    false
-  );
+-- insert into partners (name, user_profile_id, ownership_percentage, monthly_salary_aed, is_working_partner)
+-- values
+--   (
+--     'Muheeb',
+--     '23ee6d50-a842-4d63-9c7f-7580f1e68c2b',
+--     33.33,
+--     15000.00,
+--     true
+--   ),
+--   (
+--     'Beshair',
+--     null,
+--     33.33,
+--     0.00,
+--     false
+--   ),
+--   (
+--     'Faisal',
+--     null,
+--     33.33,
+--     0.00,
+--     false
+--   );
 
 -- =============================================
 -- DONE! All tables, policies, and seed data

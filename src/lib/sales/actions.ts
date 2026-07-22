@@ -8,7 +8,7 @@ export async function getInvoices() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('invoices')
-    .select(`*, invoice_line_items(quantity, description, deals(model))`)
+    .select(`*, invoice_line_items(quantity, description, deals(id, deal_number, model))`)
     .order('created_at', { ascending: false })
   
   if (error) {
@@ -39,11 +39,57 @@ export async function createInvoice(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
+  const customerName = formData.get('customer_name') as string
+  const customerEmail = formData.get('customer_email') as string || null
+  const customerAddress = formData.get('customer_address') as string || null
+  const customerPhone = formData.get('customer_phone') as string || null
+
+  let clientId = null
+  if (customerName) {
+    // Check if client exists
+    const { data: existingClient } = await supabase
+      .from('clients')
+      .select('id, email, phone, address')
+      .eq('name', customerName.trim())
+      .maybeSingle()
+
+    if (existingClient) {
+      clientId = existingClient.id
+      // Update details in client account if they are currently blank
+      const updates: Record<string, any> = {}
+      if (!existingClient.email && customerEmail) updates.email = customerEmail
+      if (!existingClient.phone && customerPhone) updates.phone = customerPhone
+      if (!existingClient.address && customerAddress) updates.address = customerAddress
+      
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = new Date().toISOString()
+        await supabase.from('clients').update(updates).eq('id', clientId)
+      }
+    } else {
+      // Create new client account
+      const { data: newClient, error: clientErr } = await supabase
+        .from('clients')
+        .insert({
+          name: customerName.trim(),
+          email: customerEmail,
+          phone: customerPhone,
+          address: customerAddress
+        })
+        .select('id')
+        .single()
+
+      if (!clientErr && newClient) {
+        clientId = newClient.id
+      }
+    }
+  }
+
   const payload = {
-    customer_name:    formData.get('customer_name') as string,
-    customer_email:   formData.get('customer_email') as string || null,
-    customer_address: formData.get('customer_address') as string || null,
-    customer_phone:   formData.get('customer_phone') as string || null,
+    customer_name:    customerName,
+    customer_email:   customerEmail,
+    customer_address: customerAddress,
+    customer_phone:   customerPhone,
+    client_id:        clientId,
     issue_date:       formData.get('issue_date') as string || new Date().toISOString().split('T')[0],
     due_date:         formData.get('due_date') as string || null,
     notes:            formData.get('notes') as string || null,
@@ -58,6 +104,7 @@ export async function createInvoice(formData: FormData) {
 
   if (error) return { error: error.message }
   revalidatePath('/dashboard/sales')
+  revalidatePath('/dashboard/clients')
   return { success: true, invoice: data }
 }
 
@@ -317,23 +364,35 @@ export async function getAvailableDeals() {
       li.invoices?.status !== 'CANCELLED' && li.invoices?.status !== 'VOIDED'
     )
     
-    // For legacy scalar deals
-    const scalarAllocated = activeLineItems
-      .filter((li: any) => !li.deal_item_id)
+    // Total allocated across ALL line items (deal-level + SKU-level)
+    const totalAllocated = activeLineItems
       .reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
     
-    deal.remaining_quantity = Math.max(0, (deal.quantity || 0) - scalarAllocated)
+    // Deal header remaining = total deal quantity minus everything sold
+    deal.remaining_quantity = Math.max(0, (deal.quantity || 0) - totalAllocated)
 
     // For deal items (SKUs)
     if (deal.items && deal.items.length > 0) {
+      // Unattributed quantity (deal_item_id = null) — happens for legacy or whole-deal selections
+      const unattributedAllocated = activeLineItems
+        .filter((li: any) => !li.deal_item_id)
+        .reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+
       deal.items = deal.items.map((item: any) => {
         const itemAllocated = activeLineItems
           .filter((li: any) => li.deal_item_id === item.id)
           .reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+
+        let remaining = Math.max(0, (item.quantity || 0) - itemAllocated)
+
+        // For single-item deals, unattributed deal-level sales also consume this SKU's stock
+        if (deal.items.length === 1) {
+          remaining = Math.max(0, remaining - unattributedAllocated)
+        }
         
         return {
           ...item,
-          remaining_quantity: Math.max(0, (item.quantity || 0) - itemAllocated)
+          remaining_quantity: remaining
         }
       })
     }
@@ -368,4 +427,27 @@ export async function updateInvoiceApproval(id: string, status: 'APPROVED' | 'RE
   if (error) throw error
   revalidatePath('/dashboard/admin')
   revalidatePath('/dashboard/sales')
+}
+
+export async function updateInvoiceBilledTo(
+  id: string,
+  customerName: string,
+  customerAddress: string,
+  customerEmail: string,
+  customerPhone: string
+) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('invoices')
+    .update({
+      customer_name: customerName,
+      customer_address: customerAddress || null,
+      customer_email: customerEmail || null,
+      customer_phone: customerPhone || null
+    })
+    .eq('id', id)
+    
+  if (error) throw error
+  revalidatePath('/dashboard/sales')
+  revalidatePath(`/dashboard/sales/${id}`)
 }

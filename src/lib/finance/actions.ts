@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { getUserRole } from '@/lib/admin/actions'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export async function getTreasurySettings() {
   const supabase = await createClient()
@@ -13,12 +15,12 @@ export async function getTreasurySettings() {
     
   if (error) {
     console.error('Error fetching treasury settings:', error)
-    return { amex_limit: 500000, cash_limit: 300000 }
+    return { amex_limit: 500000, turbo_cash_limit: 150000, sb_cash_limit: 150000 }
   }
   return data
 }
 
-export async function updateTreasurySettings(amexLimit: number, cashLimit: number) {
+export async function updateTreasurySettings(amexLimit: number, turboLimit: number, sbLimit: number) {
   const supabase = await createClient()
   
   // We just update the first row
@@ -27,7 +29,7 @@ export async function updateTreasurySettings(amexLimit: number, cashLimit: numbe
   if (settings) {
     const { error } = await supabase
       .from('treasury_settings')
-      .update({ amex_limit: amexLimit, cash_limit: cashLimit })
+      .update({ amex_limit: amexLimit, turbo_cash_limit: turboLimit, sb_cash_limit: sbLimit })
       .eq('id', settings.id)
       
     if (error) throw error
@@ -84,7 +86,7 @@ export async function getRepayments() {
   return data
 }
 
-export async function logRepayment(amount: number, source: 'AMEX' | 'CASH_POOL', notes?: string) {
+export async function logRepayment(amount: number, source: 'AMEX' | 'CASH_POOL' | 'AMEX_PAYOFF_SB' | 'TURBO_CASH' | 'SB_CASH' | 'TURBO_TO_SB' | 'SB_TO_TURBO' | 'TURBO_TO_AMEX', notes?: string) {
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -99,12 +101,35 @@ export async function logRepayment(amount: number, source: 'AMEX' | 'CASH_POOL',
     })
     
   if (error) throw error
+
+  // Amex Cashback Locking Logic
+  if (source === 'AMEX_PAYOFF_SB' || source === 'AMEX') {
+    // Find active deals funded by Amex that don't have cashback secured yet
+    const { data: amexDeals } = await supabase
+      .from('deals')
+      .select('id, cashback_received')
+      .in('funding_source', ['AMEX', 'MIXED'])
+      .neq('status', 'DEAL_CLOSED')
+      .is('cashback_received', false)
+
+    if (amexDeals && amexDeals.length > 0) {
+      const dealIds = amexDeals.map(d => d.id)
+      await supabase
+        .from('deals')
+        .update({ cashback_received: true })
+        .in('id', dealIds)
+    }
+  }
+
   revalidatePath('/dashboard/finance')
 }
 
 export async function updateWireTransfer(id: string, amount: number, destination: string, notes?: string, dealId?: string | null) {
-  const supabase = await createClient()
-  const { error } = await supabase
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN' && role !== 'FINANCE') throw new Error('Unauthorized')
+  
+  const supabaseAdmin = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const { error } = await supabaseAdmin
     .from('wire_transfers')
     .update({ amount, destination, notes, deal_id: dealId || null })
     .eq('id', id)
@@ -113,15 +138,21 @@ export async function updateWireTransfer(id: string, amount: number, destination
 }
 
 export async function deleteWireTransfer(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('wire_transfers').delete().eq('id', id)
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
+
+  const supabaseAdmin = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const { error } = await supabaseAdmin.from('wire_transfers').delete().eq('id', id)
   if (error) throw error
   revalidatePath('/dashboard/finance')
 }
 
-export async function updateRepayment(id: string, amount: number, source: 'AMEX' | 'CASH_POOL', notes?: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
+export async function updateRepayment(id: string, amount: number, source: 'AMEX' | 'CASH_POOL' | 'AMEX_PAYOFF_SB' | 'TURBO_CASH' | 'SB_CASH' | 'TURBO_TO_SB' | 'SB_TO_TURBO' | 'TURBO_TO_AMEX', notes?: string) {
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN' && role !== 'FINANCE') throw new Error('Unauthorized')
+
+  const supabaseAdmin = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const { error } = await supabaseAdmin
     .from('repayments')
     .update({ amount, source, notes })
     .eq('id', id)
@@ -130,9 +161,37 @@ export async function updateRepayment(id: string, amount: number, source: 'AMEX'
 }
 
 export async function deleteRepayment(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('repayments').delete().eq('id', id)
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
+
+  const supabaseAdmin = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const { error } = await supabaseAdmin.from('repayments').delete().eq('id', id)
   if (error) throw error
   revalidatePath('/dashboard/finance')
+}
+
+export async function getTreasuryData() {
+  const supabase = await createClient()
+  
+  // Fetch deals with shipment costs
+  const { data: deals } = await supabase.from('deals').select(`
+    *,
+    shipment_deals (
+      shipments (
+        total_logistics_cost,
+        shipment_deals ( deals ( quantity ) )
+      )
+    )
+  `)
+  
+  // Fetch paid invoices with line items and SKU costs
+  const { data: invoices } = await supabase.from('invoices')
+    .select('*, invoice_line_items(*, deal_items(unit_cost)), clients(name)')
+    .eq('status', 'PAID')
+    
+  return {
+    deals: deals || [],
+    invoices: invoices || []
+  }
 }
 

@@ -7,17 +7,22 @@ import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { useRole } from '@/components/RoleProvider'
 
+
+
 interface Props {
   user: User
   children: React.ReactNode
 }
 
 export default function DashboardShell({ user, children }: Props) {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
   const role = useRole()
+
+  const isExpanded = sidebarOpen || isHovered
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -28,9 +33,11 @@ export default function DashboardShell({ user, children }: Props) {
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '⊞', href: '/dashboard', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
     { id: 'deals', label: 'Deals', icon: '◈', href: '/dashboard/deals', roles: ['SUPER_ADMIN', 'FINANCE'] },
-    { id: 'inventory', label: 'Inventory', icon: '📦', href: '/dashboard/inventory', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
+    { id: 'inventory', label: 'Online Inventory', icon: '📦', href: '/dashboard/inventory', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
     { id: 'logistics', label: 'Logistics', icon: '◎', href: '/dashboard/logistics', roles: ['SUPER_ADMIN', 'FINANCE', 'LOGISTICS'] },
     { id: 'sales', label: 'Sales Invoices', icon: '📄', href: '/dashboard/sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
+    { id: 'online-sales', label: 'Online Sales', icon: '🛒', href: '/dashboard/online-sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
+    { id: 'clients', label: 'Clients', icon: '👤', href: '/dashboard/clients', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
     { id: 'accounting', label: 'Accounting', icon: '📊', href: '/dashboard/accounting', roles: ['SUPER_ADMIN', 'FINANCE'] },
     { id: 'partners', label: 'Partners', icon: '🤝', href: '/dashboard/partners', roles: ['SUPER_ADMIN', 'FINANCE'] },
     { id: 'finance', label: 'Treasury', icon: '🏦', href: '/dashboard/finance', roles: ['SUPER_ADMIN', 'FINANCE'] },
@@ -42,7 +49,11 @@ export default function DashboardShell({ user, children }: Props) {
   return (
     <div className="erp-root">
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'}`}>
+      <aside 
+        className={`sidebar ${isExpanded ? 'sidebar-open' : 'sidebar-collapsed'}`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
         {/* Brand */}
         <div className="sidebar-brand">
           <div className="sidebar-logo">
@@ -57,7 +68,7 @@ export default function DashboardShell({ user, children }: Props) {
               </defs>
             </svg>
           </div>
-          {sidebarOpen && (
+          {isExpanded && (
             <div className="sidebar-brand-text">
               <span className="sidebar-brand-name">Mobitech</span>
               <span className="sidebar-brand-sub">ERP Platform</span>
@@ -77,27 +88,73 @@ export default function DashboardShell({ user, children }: Props) {
                 className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
               >
                 <span className="nav-icon">{item.icon}</span>
-                {sidebarOpen && <span className="nav-label">{item.label}</span>}
+                {isExpanded && <span className="nav-label">{item.label}</span>}
                 {isActive && <span className="nav-indicator" />}
               </Link>
             )
           })}
         </nav>
 
+
         {/* User section */}
-        <div className="sidebar-user">
+        <div 
+          className="sidebar-user" 
+          style={{ 
+            position: 'relative', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '10px',
+            justifyContent: isExpanded ? 'flex-start' : 'center',
+            padding: isExpanded ? '14px 12px' : '14px 0',
+            minHeight: '60px'
+          }}
+        >
           <div className="user-avatar">{user.email?.charAt(0).toUpperCase()}</div>
-          {sidebarOpen && (
-            <div className="user-info">
+          {isExpanded && (
+            <div className="user-info" style={{ marginRight: '24px' }}>
               <span className="user-name">{user.email?.split('@')[0]}</span>
               <span className="user-role">{role.replace('_', ' ')}</span>
             </div>
           )}
-          {sidebarOpen && (
-            <button id="logout-btn" onClick={handleLogout} className="logout-btn" title="Sign out">
+          {isExpanded && (
+            <button 
+              id="logout-btn" 
+              onClick={handleLogout} 
+              className="logout-btn" 
+              title="Sign out"
+              style={{ marginRight: '16px' }}
+            >
               ⏻
             </button>
           )}
+
+          {/* Sidebar Collapse/Expand Toggle Arrow Button */}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            style={{
+              position: 'absolute',
+              bottom: '18px',
+              right: isExpanded ? '10px' : '50%',
+              transform: isExpanded ? 'none' : 'translateX(50%)',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              fontSize: '9px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              transition: 'all var(--transition)',
+              zIndex: 50
+            }}
+            title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+          >
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
         </div>
       </aside>
 

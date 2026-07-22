@@ -3,10 +3,24 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { INVOICE_STATUSES, PAYMENT_METHODS, type InvoiceStatus } from '@/lib/sales/constants'
-import { addLineItem, removeLineItem, recordPayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus } from '@/lib/sales/actions'
+import { addLineItem, removeLineItem, recordPayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus, updateInvoiceBilledTo } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
 
-function fmt(n: number) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits: 3, maximumFractionDigits: 3}).format(n||0) }
+function fmt(n: number) {
+  const parts = Number(n || 0).toString().split('.')
+  const integerPart = parts[0]
+  let decimalPart = parts[1] || ''
+  
+  if (decimalPart.length < 3) {
+    decimalPart = decimalPart.padEnd(3, '0')
+  } else {
+    decimalPart = decimalPart.substring(0, 3)
+  }
+  
+  const formattedInteger = new Intl.NumberFormat('en-US').format(parseFloat(integerPart))
+  return `$${formattedInteger}.${decimalPart}`
+}
+
 function fmtD(d: string|null|undefined) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}) }
 
 interface Props {
@@ -22,10 +36,82 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   const [showPayment, setShowPayment] = useState(false)
   const [error, setError] = useState('')
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [editingLineItem, setEditingLineItem] = useState<string | null>(null)
   const [editDealId, setEditDealId] = useState<string>('')
   const [isEditingStatus, setIsEditingStatus] = useState(false)
   const [editStatusValue, setEditStatusValue] = useState<string>('')
+
+  const [isEditingBilledTo, setIsEditingBilledTo] = useState(false)
+  const [editCustomerName, setEditCustomerName] = useState(invoice.customer_name || '')
+  const [editCustomerAddress, setEditCustomerAddress] = useState(invoice.customer_address || '')
+  const [editCustomerEmail, setEditCustomerEmail] = useState(invoice.customer_email || '')
+  const [editCustomerPhone, setEditCustomerPhone] = useState(invoice.customer_phone || '')
+
+  const [dealSearchQuery, setDealSearchQuery] = useState('')
+  const [showDealDropdown, setShowDealDropdown] = useState(false)
+
+  const getSelectedDealLabel = () => {
+    const dId = liForm.deal_id
+    const dItemId = liForm.deal_item_id
+    if (!dId) return 'No link / Custom item'
+
+    const deal = deals.find(d => d.id === dId)
+    if (!deal) return 'No link / Custom item'
+
+    if (dItemId) {
+      const item = deal.items?.find((i: any) => i.id === dItemId)
+      if (item) {
+        return `${deal.deal_number} - ${item.model} ${item.storage} ${item.grade || ''} (${item.remaining_quantity} avail)`
+      }
+    }
+    return `${deal.deal_number} - ${deal.model} ${[deal.storage, deal.grade, deal.carrier].filter(Boolean).join(' ')} (${deal.remaining_quantity} avail)`
+  }
+
+  const filteredDeals = deals.filter(d => {
+    if (!dealSearchQuery) return true
+    const q = dealSearchQuery.toLowerCase()
+
+    const matchDealNumber = d.deal_number?.toLowerCase().includes(q)
+    const matchModel = d.model?.toLowerCase().includes(q)
+    const matchQty = String(d.remaining_quantity || 0).includes(q)
+    const matchSpecs = [d.storage, d.grade, d.carrier].filter(Boolean).join(' ').toLowerCase().includes(q)
+
+    if (matchDealNumber || matchModel || matchQty || matchSpecs) return true
+
+    if (d.items && d.items.length > 0) {
+      return d.items.some((it: any) => {
+        const matchItemModel = it.model?.toLowerCase().includes(q)
+        const matchItemStorage = it.storage?.toLowerCase().includes(q)
+        const matchItemGrade = (it.grade || '')?.toLowerCase().includes(q)
+        const matchItemQty = String(it.remaining_quantity || 0).includes(q)
+        return matchItemModel || matchItemStorage || matchItemGrade || matchItemQty
+      })
+    }
+
+    return false
+  })
+
+  const getFilteredItems = (d: any) => {
+    if (!dealSearchQuery) return d.items || []
+    const q = dealSearchQuery.toLowerCase()
+    
+    const matchDealHeader = 
+      d.deal_number?.toLowerCase().includes(q) ||
+      d.model?.toLowerCase().includes(q) ||
+      String(d.remaining_quantity || 0).includes(q) ||
+      [d.storage, d.grade, d.carrier].filter(Boolean).join(' ').toLowerCase().includes(q)
+      
+    if (matchDealHeader) return d.items || []
+    
+    return (d.items || []).filter((it: any) => {
+      const matchItemModel = it.model?.toLowerCase().includes(q)
+      const matchItemStorage = it.storage?.toLowerCase().includes(q)
+      const matchItemGrade = (it.grade || '')?.toLowerCase().includes(q)
+      const matchItemQty = String(it.remaining_quantity || 0).includes(q)
+      return matchItemModel || matchItemStorage || matchItemGrade || matchItemQty
+    })
+  }
 
   const [liForm, setLiForm] = useState({ deal_id: '', deal_item_id: '', description: '', quantity: '1', unit_price: '' })
   const [payForm, setPayForm] = useState({ amount: invoice.balance_due.toString(), payment_date: new Date().toISOString().split('T')[0], payment_method: 'WIRE_TRANSFER', reference_number: '', notes: '' })
@@ -84,9 +170,7 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
     })
   }
 
-  const handleUploadPdf = async (e: any) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const uploadFile = async (file: File) => {
     setIsUploadingPdf(true)
     try {
       const fd = new FormData()
@@ -98,6 +182,24 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
     } finally {
       setIsUploadingPdf(false)
     }
+  }
+
+  const handleUploadPdf = async (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await uploadFile(file)
+  }
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      alert('Please drop a valid PDF document.')
+      return
+    }
+    await uploadFile(file)
   }
 
   const handleRemovePdf = async () => {
@@ -122,6 +224,28 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
       const res = await updateInvoiceStatus(invoice.id, editStatusValue)
       if (res.error) alert(res.error)
       else setIsEditingStatus(false)
+    })
+  }
+
+  const handleUpdateBilledTo = () => {
+    if (!editCustomerName.trim()) {
+      setError('Customer name is required')
+      return
+    }
+    setError('')
+    startTransition(async () => {
+      try {
+        await updateInvoiceBilledTo(
+          invoice.id,
+          editCustomerName,
+          editCustomerAddress,
+          editCustomerEmail,
+          editCustomerPhone
+        )
+        setIsEditingBilledTo(false)
+      } catch (err: any) {
+        setError(err.message || 'Failed to update billed to')
+      }
     })
   }
 
@@ -192,11 +316,65 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
           </div>
 
           <div style={{ marginBottom:'32px', fontSize:'13px' }}>
-            <div style={{ color:'var(--text-muted)', marginBottom:'4px' }}>Billed To:</div>
-            <div style={{ fontSize:'15px', fontWeight:700 }}>{invoice.customer_name}</div>
-            {invoice.customer_address && <div style={{ whiteSpace:'pre-wrap' }}>{invoice.customer_address}</div>}
-            {invoice.customer_email && <div>{invoice.customer_email}</div>}
-            {invoice.customer_phone && <div>{invoice.customer_phone}</div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ color:'var(--text-muted)', fontWeight: 600 }}>Billed To:</span>
+              {!isEditingBilledTo && (
+                <button 
+                  className="btn-ghost" 
+                  style={{ padding: 0, fontSize: '11px', color: 'var(--accent-indigo)' }}
+                  onClick={() => setIsEditingBilledTo(true)}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {isEditingBilledTo ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-elevated)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Customer Name *</label>
+                  <input type="text" className="form-input" style={{ fontSize: '13px', padding: '6px 10px' }} value={editCustomerName} onChange={e => setEditCustomerName(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Address</label>
+                  <textarea className="form-input" rows={2} style={{ fontSize: '13px', padding: '6px 10px', resize: 'vertical' }} value={editCustomerAddress} onChange={e => setEditCustomerAddress(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Email</label>
+                  <input type="email" className="form-input" style={{ fontSize: '13px', padding: '6px 10px' }} value={editCustomerEmail} onChange={e => setEditCustomerEmail(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Phone</label>
+                  <input type="text" className="form-input" style={{ fontSize: '13px', padding: '6px 10px' }} value={editCustomerPhone} onChange={e => setEditCustomerPhone(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button className="btn-primary" style={{ padding: '4px 12px', fontSize: '12px' }} onClick={handleUpdateBilledTo} disabled={isPending}>
+                    {isPending ? 'Saving...' : 'Save'}
+                  </button>
+                  <button 
+                    className="btn-ghost" 
+                    style={{ padding: '4px 12px', fontSize: '12px', border: '1px solid var(--border)' }} 
+                    type="button"
+                    onClick={() => {
+                      setIsEditingBilledTo(false)
+                      setEditCustomerName(invoice.customer_name || '')
+                      setEditCustomerAddress(invoice.customer_address || '')
+                      setEditCustomerEmail(invoice.customer_email || '')
+                      setEditCustomerPhone(invoice.customer_phone || '')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize:'15px', fontWeight:700 }}>{invoice.customer_name}</div>
+                {invoice.customer_address && <div style={{ whiteSpace:'pre-wrap' }}>{invoice.customer_address}</div>}
+                {invoice.customer_email && <div>{invoice.customer_email}</div>}
+                {invoice.customer_phone && <div>{invoice.customer_phone}</div>}
+              </div>
+            )}
           </div>
 
           <div className="deals-table-wrap">
@@ -223,6 +401,9 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                               if (d.items && d.items.length > 0) {
                                 return (
                                   <optgroup key={d.id} label={`${d.deal_number} - ${d.model} (${d.remaining_quantity} avail)`}>
+                                    <option value={d.id}>
+                                      [Whole Deal] {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
+                                    </option>
                                     {d.items.map((it: any) => (
                                       <option key={it.id} value={`${d.id}:${it.id}`}>
                                         {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
@@ -320,10 +501,29 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                  )}
                </div>
             ) : (
-               <div>
+               <div
+                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                 onDragLeave={() => setIsDragging(false)}
+                 onDrop={handleDrop}
+                 style={{
+                   border: isDragging ? '2px dashed var(--accent-indigo)' : '1px dashed var(--border-subtle)',
+                   borderRadius: 'var(--radius-sm)',
+                   padding: '24px 16px',
+                   textAlign: 'center',
+                   backgroundColor: isDragging ? 'rgba(99,102,241,0.06)' : 'transparent',
+                   transition: 'all var(--transition)',
+                   cursor: 'pointer'
+                 }}
+               >
                  <input type="file" accept="application/pdf" id="pdf-upload" style={{ display: 'none' }} onChange={handleUploadPdf} />
-                 <label htmlFor="pdf-upload" className="btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '8px 16px', border: '1px dashed var(--border-subtle)' }}>
-                   {isUploadingPdf ? 'Uploading...' : '📄 Upload PDF Invoice'}
+                 <label htmlFor="pdf-upload" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                   <span style={{ fontSize: '24px' }}>{isUploadingPdf ? '⏳' : '📥'}</span>
+                   <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                     {isUploadingPdf ? 'Uploading...' : 'Drag & drop PDF here, or click to browse'}
+                   </span>
+                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                     Supports PDF format only
+                   </span>
                  </label>
                </div>
             )}
@@ -371,46 +571,205 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
       {/* Add Line Item Modal */}
       {showLineItem && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowLineItem(false)}>
-          <div className="modal-box" style={{ maxWidth: '500px' }}>
+          <div className="modal-box" style={{ maxWidth: '500px', overflow: 'visible' }}>
             <div className="modal-header">
               <div><h2 className="modal-title">Add Line Item</h2></div>
               <button className="modal-close" onClick={()=>setShowLineItem(false)}>&#x2715;</button>
             </div>
             <div className="modal-form">
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">Link to Inventory Deal (Optional)</label>
-                <select className="form-input" value={`${liForm.deal_id}${liForm.deal_item_id ? `:${liForm.deal_item_id}` : ''}`} onChange={e => {
-                  const [dId, dItemId] = e.target.value.split(':')
-                  let desc = liForm.description
-                  const deal = deals.find(d => d.id === dId)
-                  if (deal) {
-                    if (dItemId) {
-                      const item = deal.items?.find((i: any) => i.id === dItemId)
-                      if (item) desc = `${deal.deal_number} - ${item.model} ${item.storage} ${item.grade || ''}`
-                    } else {
-                      desc = `${deal.deal_number} - ${deal.model} ${deal.storage || ''} ${deal.grade || ''}`
-                    }
-                  }
-                  setLiForm(f => ({ ...f, deal_id: dId || '', deal_item_id: dItemId || '', description: desc.trim() }))
-                }}>
-                  <option value="">No link / Custom item</option>
-                  {deals.map(d => {
-                    if (d.items && d.items.length > 0) {
-                      return (
-                        <optgroup key={d.id} label={`${d.deal_number} - ${d.model} (${d.remaining_quantity} avail)`}>
-                          {d.items.map((it: any) => (
-                            <option key={it.id} value={`${d.id}:${it.id}`}>
-                              {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
-                            </option>
-                          ))}
-                        </optgroup>
-                      )
-                    }
-                    return (
-                      <option key={d.id} value={d.id}>{d.deal_number} - {d.model} {[d.storage, d.grade, d.carrier].filter(Boolean).join(' ')} ({d.remaining_quantity} avail)</option>
-                    )
-                  })}
-                </select>
+                
+                {/* Trigger Button */}
+                <div 
+                  className="form-input" 
+                  onClick={() => setShowDealDropdown(!showDealDropdown)}
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    cursor: 'pointer',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    userSelect: 'none'
+                  }}
+                >
+                  <span style={{ fontSize: '13px', color: liForm.deal_id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                    {getSelectedDealLabel()}
+                  </span>
+                  <span style={{ fontSize: '10px', opacity: 0.6 }}>{showDealDropdown ? '▲' : '▼'}</span>
+                </div>
+
+                {/* Click outside overlay */}
+                {showDealDropdown && (
+                  <div 
+                    onClick={() => { setShowDealDropdown(false); setDealSearchQuery(''); }}
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }}
+                  />
+                )}
+
+                {/* Dropdown Panel */}
+                {showDealDropdown && (
+                  <div 
+                    style={{ 
+                      position: 'absolute', 
+                      top: '100%', 
+                      left: 0, 
+                      right: 0, 
+                      zIndex: 100, 
+                      background: 'var(--bg-surface)', 
+                      border: '1px solid var(--border)', 
+                      borderRadius: 'var(--radius-sm)', 
+                      boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+                      marginTop: '4px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      maxHeight: '300px',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {/* Search Input Bar */}
+                    <div style={{ padding: '8px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                      <input 
+                        type="text" 
+                        className="form-input"
+                        placeholder="Search deal #, model, or quantity..."
+                        value={dealSearchQuery}
+                        onChange={e => setDealSearchQuery(e.target.value)}
+                        style={{ fontSize: '12px', padding: '6px 10px', width: '100%', boxSizing: 'border-box' }}
+                        autoFocus
+                        onClick={e => e.stopPropagation()} // Prevent closing dropdown on input click
+                      />
+                    </div>
+
+                    {/* Options List */}
+                    <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+                      {/* No link option */}
+                      <div 
+                        onClick={() => {
+                          setLiForm(f => ({ ...f, deal_id: '', deal_item_id: '', description: '' }));
+                          setShowDealDropdown(false);
+                          setDealSearchQuery('');
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          backgroundColor: !liForm.deal_id ? 'var(--bg-hover)' : 'transparent',
+                          color: 'var(--text-primary)',
+                          fontWeight: !liForm.deal_id ? 600 : 400
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = !liForm.deal_id ? 'var(--bg-hover)' : 'transparent'}
+                      >
+                        No link / Custom item
+                      </div>
+
+                      {filteredDeals.length === 0 && (
+                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                          No matching deals found
+                        </div>
+                      )}
+
+                      {filteredDeals.map(d => {
+                        const items = getFilteredItems(d)
+                        const isSelectedDeal = liForm.deal_id === d.id && !liForm.deal_item_id
+                        
+                        if (items.length > 0) {
+                          // Deal group header
+                          return (
+                            <div key={d.id}>
+                              <div style={{ 
+                                padding: '6px 12px 2px', 
+                                fontSize: '11px', 
+                                fontWeight: 700, 
+                                color: 'var(--accent-indigo)', 
+                                textTransform: 'uppercase', 
+                                letterSpacing: '0.5px',
+                                background: 'rgba(99,102,241,0.04)',
+                                marginTop: '4px'
+                              }}>
+                                {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
+                              </div>
+                              <div
+                                onClick={() => {
+                                  const desc = `${d.deal_number} - ${d.model} ${d.storage || ''} ${d.grade || ''}`.trim()
+                                  setLiForm(f => ({ ...f, deal_id: d.id, deal_item_id: '', description: desc }));
+                                  setShowDealDropdown(false);
+                                  setDealSearchQuery('');
+                                }}
+                                style={{
+                                  padding: '6px 12px 6px 20px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  backgroundColor: isSelectedDeal ? 'var(--bg-hover)' : 'transparent',
+                                  color: 'var(--accent-indigo)',
+                                  fontWeight: isSelectedDeal ? 600 : 400
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = isSelectedDeal ? 'var(--bg-hover)' : 'transparent'}
+                              >
+                                🔗 [Whole Deal] {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
+                              </div>
+                              {items.map((it: any) => {
+                                const isSelectedOption = liForm.deal_id === d.id && liForm.deal_item_id === it.id
+                                return (
+                                  <div
+                                    key={it.id}
+                                    onClick={() => {
+                                      const desc = `${d.deal_number} - ${it.model} ${it.storage} ${it.grade || ''}`.trim()
+                                      setLiForm(f => ({ ...f, deal_id: d.id, deal_item_id: it.id, description: desc }));
+                                      setShowDealDropdown(false);
+                                      setDealSearchQuery('');
+                                    }}
+                                    style={{
+                                      padding: '6px 12px 6px 20px',
+                                      fontSize: '12px',
+                                      cursor: 'pointer',
+                                      backgroundColor: isSelectedOption ? 'var(--bg-hover)' : 'transparent',
+                                      color: 'var(--text-primary)',
+                                      fontWeight: isSelectedOption ? 600 : 400
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = isSelectedOption ? 'var(--bg-hover)' : 'transparent'}
+                                  >
+                                    {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        }
+
+                        // Single item deal option
+                        return (
+                          <div
+                            key={d.id}
+                            onClick={() => {
+                              const desc = `${d.deal_number} - ${d.model} ${d.storage || ''} ${d.grade || ''}`.trim()
+                              setLiForm(f => ({ ...f, deal_id: d.id, deal_item_id: '', description: desc }));
+                              setShowDealDropdown(false);
+                              setDealSearchQuery('');
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              backgroundColor: isSelectedDeal ? 'var(--bg-hover)' : 'transparent',
+                              color: 'var(--text-primary)',
+                              fontWeight: isSelectedDeal ? 600 : 400
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = isSelectedDeal ? 'var(--bg-hover)' : 'transparent'}
+                          >
+                            {d.deal_number} - {d.model} {[d.storage, d.grade, d.carrier].filter(Boolean).join(' ')} ({d.remaining_quantity} avail)
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                
                 <p style={{fontSize:'11px', color:'var(--text-muted)', marginTop:'4px'}}>Linking helps track which stock was sold.</p>
               </div>
               <div className="form-group">

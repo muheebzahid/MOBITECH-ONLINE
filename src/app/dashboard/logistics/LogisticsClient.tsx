@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { SHIPMENT_STATUSES, SHIPMENT_STATUS_ORDER, CARRIERS, type ShipmentStatus } from '@/lib/logistics/constants'
-import { createShipment } from '@/lib/logistics/actions'
+import { createShipment, updateShipmentHandler } from '@/lib/logistics/actions'
 import { useRole } from '@/components/RoleProvider'
 
 function fmtS(n: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0) }
@@ -22,6 +22,7 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
   const [showCreate, setShowCreate] = useState(false)
   const [selectedDeals, setSelectedDeals] = useState<string[]>([])
   const [form, setForm] = useState({ carrier: '', awb_number: '', sb_invoice_number: '', sb_fee: '', usa_to_usa_cost: '', usa_to_dxb_cost: '', pickup_ref: '', pickup_date: '', notes: '' })
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [error, setError] = useState('')
 
   // Summary counts
@@ -41,10 +42,16 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
       const fd = new FormData()
       Object.entries(form).forEach(([k, v]) => fd.append(k, v))
       selectedDeals.forEach(id => fd.append('deal_ids', id))
+      if (attachedFiles.length > 0) {
+        attachedFiles.forEach(file => {
+          fd.append('documents', file)
+        })
+      }
       const result = await createShipment(fd)
       if (result.error) { setError(result.error); return }
       setShowCreate(false)
       setSelectedDeals([])
+      setAttachedFiles([])
       setForm({ carrier: '', awb_number: '', sb_invoice_number: '', sb_fee: '', usa_to_usa_cost: '', usa_to_dxb_cost: '', pickup_ref: '', pickup_date: '', notes: '' })
       router.refresh()
     })
@@ -111,6 +118,7 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
                 <th>Status</th>
                 <th>Deals</th>
                 <th>Carrier</th>
+                <th>Handler</th>
                 <th>AWB / Waybill</th>
                 <th>Shipped</th>
                 <th>Arrived Dubai</th>
@@ -126,9 +134,16 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
                 return (
                   <tr key={sh.id} className="deal-row">
                     <td>
-                      <a href={`/dashboard/logistics/${sh.id}`} className="deal-number-link">
-                        {sh.shipment_number}
-                      </a>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <a href={`/dashboard/logistics/${sh.id}`} className="deal-number-link">
+                          {sh.shipment_number}
+                        </a>
+                        {sh.awb_number && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                            {sh.awb_number}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span className={`status-badge ${st.color}`}>{st.label}</span>
@@ -140,6 +155,24 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
                       </span>
                     </td>
                     <td className="deal-date">{sh.carrier || '-'}</td>
+                    <td>
+                      <select 
+                        className="form-input" 
+                        style={{ padding: '4px 8px', fontSize: '11px', height: 'auto', width: 'auto' }}
+                        value={sh.handled_by || ''}
+                        onChange={(e) => {
+                          const val = e.target.value || null
+                          startTransition(async () => {
+                            await updateShipmentHandler(sh.id, val)
+                          })
+                        }}
+                        disabled={isPending}
+                      >
+                        <option value="">- Select -</option>
+                        <option value="SB Technology">SB Technology</option>
+                        <option value="Turbo Logistics">Turbo Logistics</option>
+                      </select>
+                    </td>
                     <td>
                       {sh.awb_number
                         ? <span className="log-awb">{sh.awb_number}</span>
@@ -243,6 +276,17 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
                   Total Freight Cost: {fmtS((parseFloat(form.usa_to_usa_cost)||0) + (parseFloat(form.usa_to_dxb_cost)||0))}
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Attach Document or Photo</label>
+                <input 
+                  type="file" 
+                  className="form-input" 
+                  accept="image/*,application/pdf"
+                  multiple
+                  onChange={e => setAttachedFiles(Array.from(e.target.files || []))} 
+                />
               </div>
 
               <div className="form-group">

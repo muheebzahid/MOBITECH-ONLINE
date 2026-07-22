@@ -7,6 +7,12 @@ CREATE TABLE IF NOT EXISTS treasury_settings (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE treasury_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can view treasury settings" ON treasury_settings FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can update treasury settings" ON treasury_settings FOR UPDATE TO authenticated USING (true);
+GRANT SELECT, INSERT, UPDATE ON treasury_settings TO authenticated;
+
 -- Seed initial settings
 INSERT INTO treasury_settings (amex_limit, cash_limit) VALUES (500000.00, 300000.00);
 
@@ -37,3 +43,16 @@ BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER treasury_settings_updated_at BEFORE UPDATE ON treasury_settings FOR EACH ROW EXECUTE FUNCTION update_treasury_modtime();
+
+-- RLS for wire_transfers
+ALTER TABLE wire_transfers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY wire_transfers_select ON wire_transfers FOR SELECT TO authenticated USING (true);
+CREATE POLICY wire_transfers_insert ON wire_transfers FOR INSERT TO authenticated WITH CHECK (true);
+GRANT SELECT, INSERT ON wire_transfers TO authenticated;
+
+-- RLS for repayments
+ALTER TABLE repayments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY repayments_select ON repayments FOR SELECT TO authenticated USING (true);
+CREATE POLICY repayments_insert ON repayments FOR INSERT TO authenticated WITH CHECK (true);
+GRANT SELECT, INSERT ON repayments TO authenticated;
+

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mobitech ERP — User Guide</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    :root{--navy:#0f1117;--navy2:#161b27;--card:#1e2535;--border:#2a3347;--teal:#14b8a6;--teal2:#0d9488;--blue:#3b82f6;--purple:#8b5cf6;--amber:#f59e0b;--red:#ef4444;--green:#22c55e;--text:#e2e8f0;--muted:#94a3b8;--white:#ffffff}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;color:#1e293b;font-size:14px;line-height:1.6}
+    .cover{background:linear-gradient(135deg,#0f1117 0%,#161b27 50%,#0d2035 100%);color:white;height:100vh;min-height:800px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:60px;page-break-after:always;position:relative;overflow:hidden}
+    .cover::before{content:'';position:absolute;top:-100px;left:-100px;width:400px;height:400px;background:radial-gradient(circle,rgba(20,184,166,.15) 0%,transparent 70%);border-radius:50%}
+    .cover::after{content:'';position:absolute;bottom:-150px;right:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(59,130,246,.1) 0%,transparent 70%);border-radius:50%}
+    .cover-logo{font-size:48px;font-weight:800;background:linear-gradient(135deg,#14b8a6,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px;position:relative;z-index:1}
+    .cover-sub{font-size:18px;color:#94a3b8;letter-spacing:3px;text-transform:uppercase;margin-bottom:60px;position:relative;z-index:1}
+    .cover-title{font-size:52px;font-weight:800;color:white;line-height:1.2;margin-bottom:16px;position:relative;z-index:1}
+    .cover-title span{background:linear-gradient(135deg,#14b8a6,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .cover-desc{font-size:18px;color:#94a3b8;max-width:500px;margin:0 auto 60px;position:relative;z-index:1}
+    .cover-badges{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;position:relative;z-index:1}
+    .badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:8px 20px;font-size:13px;color:#cbd5e1}
+    .cover-footer{position:absolute;bottom:40px;left:0;right:0;text-align:center;color:#475569;font-size:12px;z-index:1}
+    .toc-page{padding:60px 80px;page-break-after:always;min-height:100vh}
+    .toc-title{font-size:32px;font-weight:800;color:#0f172a;margin-bottom:8px}
+    .toc-divider,.section-divider{width:60px;height:4px;background:linear-gradient(90deg,#14b8a6,#3b82f6);border-radius:2px;margin-bottom:40px}
+    .section-divider{margin:12px 0 28px}
+    .toc-item{display:flex;align-items:center;padding:16px 0;border-bottom:1px solid #e2e8f0}
+    .toc-num,.step-num{width:36px;height:36px;background:linear-gradient(135deg,#14b8a6,#3b82f6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;flex-shrink:0;margin-right:16px}
+    .step-num{width:32px;height:32px;margin-right:0;margin-top:2px}
+    .toc-label{flex:1;font-size:16px;font-weight:500;color:#1e293b}
+    .toc-dots{flex:1;border-bottom:2px dotted #cbd5e1;margin:0 16px;height:1px}
+    .section{padding:50px 80px 40px;page-break-before:always}
+    .section-header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
+    .section-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+    .section-num{font-size:12px;font-weight:700;color:#14b8a6;letter-spacing:2px;text-transform:uppercase}
+    .section-title{font-size:30px;font-weight:800;color:#0f172a}
+    .section-desc{font-size:15px;color:#475569;max-width:700px;margin-bottom:32px;line-height:1.7}
+    .mockup{background:linear-gradient(135deg,#0f1117,#161b27);border-radius:16px;overflow:hidden;margin:28px 0;border:1px solid #2a3347;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .mockup-bar{background:#0d1117;padding:12px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #2a3347}
+    .dot{width:10px;height:10px;border-radius:50%}
+    .dot-red{background:#ef4444}.dot-yellow{background:#f59e0b}.dot-green{background:#22c55e}
+    .url-bar{flex:1;background:#1e2535;border-radius:6px;padding:5px 12px;font-size:11px;color:#64748b;margin-left:12px}
+    .mockup-body{display:flex;min-height:280px}
+    .mockup-sidebar{width:180px;background:#0d1420;border-right:1px solid #2a3347;padding:20px 0;flex-shrink:0}
+    .sidebar-logo{padding:0 20px 20px;font-size:16px;font-weight:800;background:linear-gradient(135deg,#14b8a6,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;border-bottom:1px solid #2a3347;margin-bottom:12px}
+    .sidebar-item{padding:10px 20px;font-size:12px;color:#64748b;display:flex;align-items:center;gap:10px}
+    .sidebar-item.active{background:rgba(20,184,166,.1);color:#14b8a6;border-right:3px solid #14b8a6}
+    .sidebar-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+    .mockup-main{flex:1;padding:20px}
+    .mock-header{font-size:18px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+    .mock-sub{font-size:11px;color:#64748b;margin-bottom:16px}
+    .mock-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px}
+    .mock-card{background:#1e2535;border:1px solid #2a3347;border-radius:8px;padding:12px}
+    .mock-card-label{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+    .mock-card-val{font-size:22px;font-weight:700;color:#14b8a6}
+    .mock-card-sub{font-size:9px;color:#22c55e;margin-top:2px}
+    .mock-table-header,.mock-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;padding:8px;border-bottom:1px solid #2a3347}
+    .mock-row{border-bottom:1px solid rgba(42,51,71,.5)}
+    .mock-th{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px}
+    .mock-td{font-size:10px;color:#94a3b8}
+    .mock-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:600}
+    .badge-green{background:rgba(34,197,94,.15);color:#22c55e}.badge-amber{background:rgba(245,158,11,.15);color:#f59e0b}.badge-blue{background:rgba(59,130,246,.15);color:#3b82f6}
+    .steps{margin:24px 0;display:flex;flex-direction:column;gap:16px}
+    .step{display:flex;gap:16px;align-items:flex-start}
+    .step-content h4{font-size:15px;font-weight:600;color:#1e293b;margin-bottom:4px}
+    .step-content p{font-size:13px;color:#64748b;line-height:1.6}
+    .info-box{border-radius:12px;padding:16px 20px;margin:20px 0;display:flex;gap:14px;align-items:flex-start}
+    .info-box.tip{background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.25)}
+    .info-box.warning{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25)}
+    .info-box.note{background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25)}
+    .info-icon{font-size:20px;flex-shrink:0;margin-top:2px}
+    .info-box .info-title{font-size:13px;font-weight:700;margin-bottom:4px}
+    .info-box.tip .info-title{color:#14b8a6}.info-box.warning .info-title{color:#f59e0b}.info-box.note .info-title{color:#3b82f6}
+    .info-box p{font-size:13px;color:#475569;line-height:1.6}
+    .feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}
+    .feature-card{background:white;border:1px solid #e2e8f0;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+    .feature-icon{font-size:28px;margin-bottom:10px}
+    .feature-title{font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px}
+    .feature-desc{font-size:13px;color:#64748b;line-height:1.6}
+    .csv-table{width:100%;border-collapse:collapse;margin:20px 0;font-size:13px}
+    .csv-table th{background:#f1f5f9;padding:10px 14px;text-align:left;font-weight:600;color:#374151;border:1px solid #e2e8f0}
+    .csv-table td{padding:10px 14px;border:1px solid #e2e8f0;color:#4b5563}
+    .csv-table tr:nth-child(even) td{background:#f8fafc}
+    .mono{font-family:'Courier New',monospace;font-size:12px;background:#f1f5f9;padding:2px 6px;border-radius:4px;color:#0f172a}
+    .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0}
+    .status-item{display:flex;align-items:center;gap:12px;padding:12px 16px;background:white;border:1px solid #e2e8f0;border-radius:10px}
+    .status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .status-name{font-size:13px;font-weight:600;color:#1e293b;flex:1}
+    .status-desc{font-size:12px;color:#94a3b8}
+    @media print{body{font-size:12px}.cover{height:100vh;page-break-after:always}.section{page-break-before:always}.print-btn-wrap{display:none!important}}
+  </style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-logo">Mobitech</div>
+  <div class="cover-sub">Enterprise Resource Planning</div>
+  <div class="cover-title">Complete <span>User Guide</span></div>
+  <div class="cover-desc">Everything you need to manage your mobile phone import business — from auction wins to final sale.</div>
+  <div class="cover-badges">
+    <div class="badge">📦 Deals &amp; Inventory</div>
+    <div class="badge">🚢 Logistics</div>
+    <div class="badge">🧾 Sales &amp; Invoicing</div>
+    <div class="badge">💰 Treasury</div>
+    <div class="badge">🤝 Partners</div>
+    <div class="badge">📊 Accounting</div>
+  </div>
+  <div class="cover-footer">Mobitech ERP · Version 1.0 · Confidential Internal Document</div>
+</div>
+
+<div class="toc-page">
+  <div class="toc-title">Table of Contents</div>
+  <div class="toc-divider"></div>
+  <div class="toc-item"><div class="toc-num">1</div><div class="toc-label">Getting Started — Login &amp; Navigation</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">2</div><div class="toc-label">Dashboard — Overview &amp; KPIs</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">3</div><div class="toc-label">Deals — Managing Auction Purchases</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">4</div><div class="toc-label">Bulk Upload — Importing Deals via CSV</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">5</div><div class="toc-label">Inventory — Stock Overview</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">6</div><div class="toc-label">Logistics — Shipment Tracking</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">7</div><div class="toc-label">Sales Invoices — Billing Your Customers</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">8</div><div class="toc-label">Accounting — Expenses &amp; P&amp;L</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">9</div><div class="toc-label">Partners — Equity &amp; Profit Sharing</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">10</div><div class="toc-label">Treasury — Amex &amp; Cash Pool</div><div class="toc-dots"></div></div>
+  <div class="toc-item"><div class="toc-num">11</div><div class="toc-label">Admin — User &amp; Role Management</div><div class="toc-dots"></div></div>
+</div>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <div class="section-num">Section 01</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#14b8a6,#0d9488)">🔐</div><div class="section-title">Getting Started — Login &amp; Navigation</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Access your Mobitech ERP from any browser on your laptop. The system uses email and password authentication to keep your data secure.</div>
+  <div class="mockup" style="min-height:320px;display:flex;align-items:center;justify-content:center;">
+    <div style="text-align:center;padding:60px;width:360px;">
+      <div style="font-size:28px;font-weight:800;background:linear-gradient(135deg,#14b8a6,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px;">Mobitech</div>
+      <div style="color:#64748b;font-size:12px;margin-bottom:32px;">Sign in to your account</div>
+      <div style="text-align:left;margin-bottom:12px;"><div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Email Address</div><div style="background:#1e2535;border:1px solid #2a3347;border-radius:8px;padding:12px 16px;font-size:12px;color:#64748b;">muheebzahid@gmail.com</div></div>
+      <div style="text-align:left;margin-bottom:24px;"><div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Password</div><div style="background:#1e2535;border:1px solid #2a3347;border-radius:8px;padding:12px 16px;font-size:12px;color:#64748b;">••••••••</div></div>
+      <div style="background:linear-gradient(135deg,#14b8a6,#0d9488);border-radius:8px;padding:12px;font-size:13px;font-weight:600;color:white;">Sign In →</div>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Open your browser</h4><p>Navigate to <span class="mono">http://localhost:3000</span> on the laptop running the ERP.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Enter your credentials</h4><p>Type your email and password. The admin account is <span class="mono">muheebzahid@gmail.com</span>.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Click Sign In</h4><p>You'll be taken to the main dashboard automatically after successful login.</p></div></div>
+  </div>
+  <div class="info-box note"><div class="info-icon">💡</div><div><div class="info-title">Navigation Tip</div><p>The left sidebar is always visible. Click any menu item to jump to that module. Your current page is highlighted in teal.</p></div></div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <div class="section-num">Section 02</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">📊</div><div class="section-title">Dashboard — Overview &amp; KPIs</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">The dashboard gives you a real-time snapshot — active deals, overdue items, remaining stock, and profit summary all in one place.</div>
+  <div class="mockup">
+    <div class="mockup-bar"><div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div><div class="url-bar">localhost:3000/dashboard</div></div>
+    <div class="mockup-body">
+      <div class="mockup-sidebar"><div class="sidebar-logo">Mobitech</div><div class="sidebar-item active"><div class="sidebar-dot"></div>Dashboard</div><div class="sidebar-item"><div class="sidebar-dot"></div>Deals</div><div class="sidebar-item"><div class="sidebar-dot"></div>Inventory</div><div class="sidebar-item"><div class="sidebar-dot"></div>Logistics</div><div class="sidebar-item"><div class="sidebar-dot"></div>Sales</div><div class="sidebar-item"><div class="sidebar-dot"></div>Accounting</div><div class="sidebar-item"><div class="sidebar-dot"></div>Partners</div><div class="sidebar-item"><div class="sidebar-dot"></div>Treasury</div></div>
+      <div class="mockup-main">
+        <div class="mock-header">Dashboard</div><div class="mock-sub">Your business at a glance</div>
+        <div class="mock-cards">
+          <div class="mock-card"><div class="mock-card-label">Total Deals</div><div class="mock-card-val" style="color:#3b82f6">47</div><div class="mock-card-sub">All time</div></div>
+          <div class="mock-card"><div class="mock-card-label">Active &lt;30d</div><div class="mock-card-val" style="color:#22c55e">12</div><div class="mock-card-sub">On track</div></div>
+          <div class="mock-card"><div class="mock-card-label">Overdue</div><div class="mock-card-val" style="color:#ef4444">3</div><div class="mock-card-sub">Action needed</div></div>
+          <div class="mock-card"><div class="mock-card-label">Stock Units</div><div class="mock-card-val" style="color:#f59e0b">284</div><div class="mock-card-sub">Available</div></div>
+          <div class="mock-card"><div class="mock-card-label">Closed</div><div class="mock-card-val" style="color:#14b8a6">32</div><div class="mock-card-sub">Settled</div></div>
+        </div>
+        <div style="background:#1e2535;border:1px solid #2a3347;border-radius:8px;padding:12px;"><div style="font-size:10px;color:#64748b;margin-bottom:8px;">RECENT DEALS</div>
+          <div class="mock-table-header"><div class="mock-th">Deal #</div><div class="mock-th">Model</div><div class="mock-th">Qty</div><div class="mock-th">Cost</div><div class="mock-th">Status</div></div>
+          <div class="mock-row"><div class="mock-td">ATT-2026-0047</div><div class="mock-td">iPhone 15</div><div class="mock-td">100</div><div class="mock-td">$450</div><div class="mock-td"><span class="mock-badge badge-amber">In Transit</span></div></div>
+          <div class="mock-row"><div class="mock-td">ATT-2026-0046</div><div class="mock-td">iPhone 14</div><div class="mock-td">50</div><div class="mock-td">$280</div><div class="mock-td"><span class="mock-badge badge-green">Received</span></div></div>
+          <div class="mock-row"><div class="mock-td">ECO-2026-0045</div><div class="mock-td">Samsung S24</div><div class="mock-td">75</div><div class="mock-td">$210</div><div class="mock-td"><span class="mock-badge badge-blue">Invoiced</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="feature-icon">🟢</div><div class="feature-title">Active Under 30 Days</div><div class="feature-desc">Deals paid within 30 days still being processed. On track within your normal cycle.</div></div>
+    <div class="feature-card"><div class="feature-icon">🔴</div><div class="feature-title">Overdue (30+ Days)</div><div class="feature-desc">Deals paid over 30 days ago but not yet closed. These need immediate attention.</div></div>
+    <div class="feature-card"><div class="feature-icon">📱</div><div class="feature-title">Remaining Stock Units</div><div class="feature-desc">Total unsold units across all open deals that have not yet been invoiced.</div></div>
+    <div class="feature-card"><div class="feature-icon">✅</div><div class="feature-title">Closed Deals</div><div class="feature-desc">Fully settled deals where all units are sold and the deal is marked complete.</div></div>
+  </div>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <div class="section-num">Section 03</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9)">🏷️</div><div class="section-title">Deals — Managing Auction Purchases</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Every batch of phones bought at auction is a "Deal." The Deals module tracks each deal from auction win to final sale — all dates, costs, funding, and status changes.</div>
+  <h3 style="font-size:17px;font-weight:700;color:#1e293b;margin:24px 0 16px;">Creating a New Deal</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Click "+ New Deal"</h4><p>Find this green button in the top right corner of the Deals page.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Fill in Deal Information</h4><p>Enter the <strong>Vendor</strong> (ATT, EcoATM, Other), <strong>Auction Platform</strong>, <strong>Date</strong>, and phone details — Model, Storage, Grade, Color, Carrier.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Enter Financials</h4><p>Set <strong>Unit Cost</strong> (USD), <strong>Quantity</strong>, and <strong>Funding Source</strong> (Amex, Cash Pool, Mixed). Totals calculate automatically.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-content"><h4>Save the Deal</h4><p>Click "Create Deal". A deal number is auto-generated (e.g., <span class="mono">ATT-2026-0001</span>) and status is set to <strong>Auction Won</strong>.</p></div></div>
+  </div>
+  <h3 style="font-size:17px;font-weight:700;color:#1e293b;margin:24px 0 16px;">Deal Status Lifecycle</h3>
+  <div class="status-grid">
+    <div class="status-item"><div class="status-dot" style="background:#f59e0b"></div><div class="status-name">AUCTION_WON</div><div class="status-desc">Just won, not yet paid</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#3b82f6"></div><div class="status-name">PAYMENT_REQUIRED</div><div class="status-desc">Payment link received</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#8b5cf6"></div><div class="status-name">PAID</div><div class="status-desc">Payment sent</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#14b8a6"></div><div class="status-name">AT_SB_TECHNOLOGY</div><div class="status-desc">Received in USA warehouse</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#06b6d4"></div><div class="status-name">AT_TURBO_LOGISTICS</div><div class="status-desc">With shipping agent in Miami</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#ec4899"></div><div class="status-name">IN_TRANSIT</div><div class="status-desc">Shipped to Dubai</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#22c55e"></div><div class="status-name">RECEIVED_BY_MOBITECH</div><div class="status-desc">Arrived &amp; inspected in Dubai</div></div>
+    <div class="status-item"><div class="status-dot" style="background:#64748b"></div><div class="status-name">DEAL_CLOSED</div><div class="status-desc">Fully sold and settled</div></div>
+  </div>
+  <div class="info-box tip"><div class="info-icon">✅</div><div><div class="info-title">Bulk Status Update</div><p>Select multiple deals using checkboxes, then click <strong>"Advance Selected"</strong> to move all of them to the next status at once — perfect when a shipment of multiple lots arrives together.</p></div></div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <div class="section-num">Section 04</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706)">📥</div><div class="section-title">Bulk Upload — Importing Deals via CSV</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Import many deals at once from Excel/CSV. This is the fastest way to enter data into the system.</div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Download the Template</h4><p>On the Deals page, click the grey <strong>"Download Template"</strong> button. This downloads a CSV with correct columns and an example row.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Fill in Your Deals in Excel</h4><p>Open in Excel or Google Sheets. Each row = one deal. Delete the example row and add your real data.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Save as CSV</h4><p>In Excel: File → Save As → select "CSV (Comma delimited)" format.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-content"><h4>Upload the File</h4><p>Click the orange <strong>"Upload Bulk Deals"</strong> button, select your CSV, and wait for the confirmation message.</p></div></div>
+  </div>
+  <h3 style="font-size:17px;font-weight:700;color:#1e293b;margin:24px 0 12px;">CSV Column Reference</h3>
+  <table class="csv-table">
+    <tr><th>Column</th><th>Example</th><th>Required?</th><th>Notes</th></tr>
+    <tr><td><span class="mono">date</span></td><td>2026-07-01</td><td>✅ Yes</td><td>Auction win date (YYYY-MM-DD)</td></tr>
+    <tr><td><span class="mono">vendor</span></td><td>ATT</td><td>✅ Yes</td><td>ATT, ECOATM, or OTHER</td></tr>
+    <tr><td><span class="mono">model</span></td><td>iPhone 14</td><td>✅ Yes</td><td>Full phone model name</td></tr>
+    <tr><td><span class="mono">unit cost</span></td><td>280.000</td><td>✅ Yes</td><td>Price per unit in USD</td></tr>
+    <tr><td><span class="mono">quantity</span></td><td>50</td><td>✅ Yes</td><td>Number of units in the lot</td></tr>
+    <tr><td><span class="mono">grade</span></td><td>B</td><td>No</td><td>CT, A, B, C, D etc.</td></tr>
+    <tr><td><span class="mono">storage</span></td><td>128GB</td><td>No</td><td>Storage size</td></tr>
+    <tr><td><span class="mono">color</span></td><td>Black</td><td>No</td><td>Phone color</td></tr>
+    <tr><td><span class="mono">carrier</span></td><td>AT&amp;T</td><td>No</td><td>Network carrier or Unlocked</td></tr>
+    <tr><td><span class="mono">funding_source</span></td><td>AMEX</td><td>No</td><td>AMEX, CASH_POOL, or MIXED</td></tr>
+    <tr><td><span class="mono">auction_fee_pct</span></td><td>2</td><td>No</td><td>B-Stock buyer fee %. Usually 2.</td></tr>
+    <tr><td><span class="mono">other_fees</span></td><td>0</td><td>No</td><td>Any additional flat fees</td></tr>
+  </table>
+  <div class="info-box warning"><div class="info-icon">💾</div><div><div class="info-title">Automatic Backup After Every Upload</div><p>After every successful bulk upload, the system saves a complete backup of all your deals to your laptop. This backup is automatically restored if the database ever resets — your data is always safe.</p></div></div>
+</div>
+
+<!-- SECTION 5 -->
+<div class="section">
+  <div class="section-num">Section 05</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#22c55e,#15803d)">📱</div><div class="section-title">Inventory — Stock Overview</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">The Inventory page shows all phones available for sale — units per model, cost price, and remaining quantity after invoicing.</div>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="feature-icon">🔍</div><div class="feature-title">Search &amp; Filter</div><div class="feature-desc">Search by model, filter by status, or sort any column to find what you need instantly.</div></div>
+    <div class="feature-card"><div class="feature-icon">📊</div><div class="feature-title">Remaining Quantity</div><div class="feature-desc">Each row shows available units — original quantity minus everything already invoiced.</div></div>
+    <div class="feature-card"><div class="feature-icon">💵</div><div class="feature-title">Landed Cost</div><div class="feature-desc">See your cost per unit (purchase + fees) so you always know your minimum selling price.</div></div>
+    <div class="feature-card"><div class="feature-icon">🚢</div><div class="feature-title">Location Status</div><div class="feature-desc">Know exactly where your stock is — in USA, in transit, or at your Dubai warehouse.</div></div>
+  </div>
+  <div class="info-box note"><div class="info-icon">ℹ️</div><div><div class="info-title">Inventory is Automatic</div><p>No manual updates needed. When you create a deal, units appear in inventory. When you raise a sales invoice, those units are automatically deducted from stock.</p></div></div>
+</div>
+
+<!-- SECTION 6 -->
+<div class="section">
+  <div class="section-num">Section 06</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">🚢</div><div class="section-title">Logistics — Shipment Tracking</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Track shipments from the USA to Dubai. Multiple deals can be grouped into a single shipment (container or courier).</div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Create a New Shipment</h4><p>Click <strong>"+ New Shipment"</strong> and give it a name (e.g., "Container July 2026").</p></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Assign Deals</h4><p>Select which deals are being shipped together. They must be in AT_TURBO_LOGISTICS status or later.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Track Dates</h4><p>Update <strong>Shipped USA Date</strong>, <strong>Arrived Dubai Date</strong>, and <strong>Received by Mobitech Date</strong> as the shipment progresses.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-content"><h4>Log Turbo Invoice</h4><p>Enter the shipping invoice amount from Turbo Logistics and mark it paid once settled.</p></div></div>
+  </div>
+</div>
+
+<!-- SECTION 7 -->
+<div class="section">
+  <div class="section-num">Section 07</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706)">🧾</div><div class="section-title">Sales Invoices — Billing Your Customers</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">When you sell phones to customers, raise a Sales Invoice linked to specific deals. Specifies which units are sold and at what price.</div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Click "+ New Invoice"</h4><p>Go to the <strong>Sales Invoices</strong> page and click to create a new invoice.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Select Customer</h4><p>Choose from your company list (SB Technology, Mobitech Wireless, etc.) or enter a new customer name.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Add Line Items</h4><p>For each line, select the <strong>Deal</strong>, enter <strong>Model</strong>, <strong>Quantity</strong>, and <strong>Unit Price (AED)</strong>. Add as many lines as needed.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-content"><h4>Issue &amp; Download PDF</h4><p>Click <strong>"Create Invoice"</strong>. The invoice gets an auto number (e.g., <span class="mono">INV-2026-0001</span>). Download it as PDF to send to your customer.</p></div></div>
+  </div>
+  <div class="info-box tip"><div class="info-icon">💡</div><div><div class="info-title">Profit Calculation</div><p>Once an invoice is issued, the system automatically calculates <strong>Gross Profit</strong> based on the selling price vs. your landed cost. View this on the Deal Detail page.</p></div></div>
+</div>
+
+<!-- SECTION 8 -->
+<div class="section">
+  <div class="section-num">Section 08</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#ec4899,#be185d)">📈</div><div class="section-title">Accounting — Expenses &amp; P&amp;L</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Track all operating expenses and view a Profit &amp; Loss summary across any date range.</div>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="feature-icon">💸</div><div class="feature-title">Log Expenses</div><div class="feature-desc">Record any business expense — rent, salaries, marketing, shipping, customs duty — tagged by category and company.</div></div>
+    <div class="feature-card"><div class="feature-icon">📊</div><div class="feature-title">P&amp;L Summary</div><div class="feature-desc">See Revenue vs. Cost of Goods vs. Expenses for a clear Net Profit figure for any period.</div></div>
+    <div class="feature-card"><div class="feature-icon">🏷️</div><div class="feature-title">Category Breakdown</div><div class="feature-desc">Expenses grouped by category so you see where money is going at a glance.</div></div>
+    <div class="feature-card"><div class="feature-icon">🏢</div><div class="feature-title">Per-Company Tracking</div><div class="feature-desc">Assign expenses to Mobitech Wireless, SB Technology, or Turbo Logistics for accurate cost allocation.</div></div>
+  </div>
+</div>
+
+<!-- SECTION 9 -->
+<div class="section">
+  <div class="section-num">Section 09</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#f97316,#c2410c)">🤝</div><div class="section-title">Partners — Equity &amp; Profit Sharing</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Manages the three business partners — tracking their equity shares, capital contributions, withdrawals, and profit distributions.</div>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="feature-icon">💼</div><div class="feature-title">Capital Injections</div><div class="feature-desc">Record when a partner puts money into the business. Increases their account balance.</div></div>
+    <div class="feature-card"><div class="feature-icon">💰</div><div class="feature-title">Profit Shares</div><div class="feature-desc">Distribute profits by equity percentage. Each distribution is logged with date and amount.</div></div>
+    <div class="feature-card"><div class="feature-icon">🏧</div><div class="feature-title">Withdrawals</div><div class="feature-desc">Record when a partner withdraws money from their account.</div></div>
+    <div class="feature-card"><div class="feature-icon">📋</div><div class="feature-title">Transaction History</div><div class="feature-desc">Full ledger for each partner — fully auditable and date-stamped.</div></div>
+  </div>
+  <div class="info-box note"><div class="info-icon">ℹ️</div><div><div class="info-title">Default Equity Split</div><p><strong>Muheeb 33.34%</strong> · <strong>Beshair 33.33%</strong> · <strong>Faisal 33.33%</strong>. Contact the Super Admin to update these percentages if they change.</p></div></div>
+</div>
+
+<!-- SECTION 10 -->
+<div class="section">
+  <div class="section-num">Section 10</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#14b8a6,#0d9488)">💳</div><div class="section-title">Treasury — Amex &amp; Cash Pool</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Tracks your two funding sources showing available capacity, deployed funds, and repayment history.</div>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="feature-icon">💳</div><div class="feature-title">Amex Credit Limit</div><div class="feature-desc">Shows your total Amex limit and how much is tied up in open deals. Alerts you when approaching your limit.</div></div>
+    <div class="feature-card"><div class="feature-icon">🏦</div><div class="feature-title">Cash Pool Balance</div><div class="feature-desc">Shows total cash pool size and deployed cash. Tracks the 7% p.a. finance cost on deployed cash days.</div></div>
+    <div class="feature-card"><div class="feature-icon">📤</div><div class="feature-title">Wire Transfers</div><div class="feature-desc">Log outgoing wire transfers to auction houses. Each wire is linked to the relevant deal.</div></div>
+    <div class="feature-card"><div class="feature-icon">📥</div><div class="feature-title">Repayments</div><div class="feature-desc">Record Amex payments or cash replenishments to free up capacity for future deals.</div></div>
+  </div>
+  <div class="info-box tip"><div class="info-icon">⚙️</div><div><div class="info-title">Updating Credit Limits</div><p>If your Amex limit or Cash Pool size changes, go to <strong>Treasury</strong>, click the <strong>gear icon ⚙️</strong> on the card, and update the limit. Changes take effect immediately.</p></div></div>
+</div>
+
+<!-- SECTION 11 -->
+<div class="section">
+  <div class="section-num">Section 11</div>
+  <div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#64748b,#374151)">⚙️</div><div class="section-title">Admin — User &amp; Role Management</div></div>
+  <div class="section-divider"></div>
+  <div class="section-desc">Only visible to Super Admin users. Allows creating user accounts, assigning roles, and controlling system access.</div>
+  <h3 style="font-size:17px;font-weight:700;color:#1e293b;margin:24px 0 16px;">User Roles</h3>
+  <table class="csv-table">
+    <tr><th>Role</th><th>Access Level</th><th>Who Uses It</th></tr>
+    <tr><td><strong>SUPER_ADMIN</strong></td><td>Full access including Admin panel</td><td>Business owners</td></tr>
+    <tr><td><strong>MANAGER</strong></td><td>View &amp; edit all deals, invoices, logistics</td><td>Operations manager</td></tr>
+    <tr><td><strong>ACCOUNTANT</strong></td><td>Read financials, log expenses</td><td>Finance staff</td></tr>
+    <tr><td><strong>VIEWER</strong></td><td>Read-only access to all modules</td><td>Partners / auditors</td></tr>
+  </table>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Go to Admin page</h4><p>Click <strong>Admin</strong> in the left sidebar. Only visible if you are a Super Admin.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Click "Invite User"</h4><p>Enter the new user's email and select their role from the dropdown.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-content"><h4>User receives email</h4><p>The invited user gets an email with a link to set their password and access the system.</p></div></div>
+  </div>
+  <div class="info-box warning"><div class="info-icon">⚠️</div><div><div class="info-title">Keep Admin Credentials Safe</div><p>Only share Super Admin access with trusted individuals. A Super Admin can delete data, change limits, and modify all records.</p></div></div>
+
+  <!-- Quick Reference Card -->
+  <div style="margin-top:48px;background:linear-gradient(135deg,#0f1117,#161b27);border-radius:16px;padding:36px;color:white;">
+    <div style="font-size:22px;font-weight:800;margin-bottom:6px;background:linear-gradient(135deg,#14b8a6,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Quick Reference</div>
+    <div style="color:#64748b;font-size:13px;margin-bottom:24px;">Most-used shortcuts and information</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;"><div style="color:#14b8a6;font-size:11px;font-weight:700;margin-bottom:8px;">🌐 APP URL</div><div style="font-family:monospace;color:#e2e8f0;font-size:13px;">http://localhost:3000</div></div>
+      <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;"><div style="color:#14b8a6;font-size:11px;font-weight:700;margin-bottom:8px;">🔐 ADMIN LOGIN</div><div style="font-family:monospace;color:#e2e8f0;font-size:12px;">muheebzahid@gmail.com</div></div>
+      <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;"><div style="color:#f59e0b;font-size:11px;font-weight:700;margin-bottom:8px;">📤 BULK UPLOAD</div><div style="color:#94a3b8;font-size:12px;">Deals → "Upload Bulk Deals" button (orange)</div></div>
+      <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;"><div style="color:#22c55e;font-size:11px;font-weight:700;margin-bottom:8px;">💾 DATA BACKUP</div><div style="color:#94a3b8;font-size:12px;">Auto-saved after every upload to seed.sql</div></div>
+    </div>
+  </div>
+  <div style="text-align:center;color:#94a3b8;font-size:12px;margin-top:40px;padding-top:24px;border-top:1px solid #e2e8f0;">Mobitech ERP · User Guide v1.0 · Confidential — Internal Use Only · July 2026</div>
+</div>
+
+<div class="print-btn-wrap" style="position:fixed;bottom:30px;right:30px;z-index:9999;">
+  <button onclick="window.print()" style="background:linear-gradient(135deg,#14b8a6,#3b82f6);color:white;border:none;border-radius:50px;padding:14px 28px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 30px rgba(20,184,166,.4);font-family:Inter,sans-serif;">🖨️ Save as PDF</button>
+</div>
+<style>@media print{.print-btn-wrap{display:none!important}body{background:white}.mockup{box-shadow:none}}</style>
+</body>
+</html>

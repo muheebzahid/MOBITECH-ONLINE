@@ -32,9 +32,10 @@ export const PLATFORMS = [
 ]
 
 export const FUNDING_SOURCES = [
-  { value: 'AMEX',      label: 'American Express' },
-  { value: 'CASH_POOL', label: 'Cash Pool (7% p.a.)' },
-  { value: 'MIXED',     label: 'Mixed (Amex + Cash)' },
+  { value: 'AMEX',       label: 'American Express' },
+  { value: 'TURBO_CASH', label: 'Turbo Cash Pool (7% p.a.)' },
+  { value: 'SB_CASH',    label: 'SB Cash Pool (7% p.a.)' },
+  { value: 'MIXED',      label: 'Mixed' },
 ]
 
 export const IPHONE_MODELS = [
@@ -71,15 +72,15 @@ export const ATT_GRADES = [
 ]
 
 export const ECOATM_GRADES = [
-  { value: 'C-YNY/G-YNN', label: 'C-YNY/G-YNN' },
-  { value: 'C-YNY', label: 'C-YNY' },
-  { value: 'E-YYN', label: 'E-YYN' },
-  { value: 'G-YNN', label: 'G-YNN' },
-  { value: 'H-NNN', label: 'H-NNN' },
-  { value: 'B-NYY', label: 'B-NYY' },
-  { value: 'D-NNY', label: 'D-NNY' },
-  { value: 'F-NYN', label: 'F-NYN' },
+  { value: 'A_YYY', label: 'A_YYY' },
+  { value: 'B_NYY', label: 'B_NYY' },
+  { value: 'C_YNY', label: 'C_YNY' },
+  { value: 'E_YYN', label: 'E_YYN' },
+  { value: 'F_NYN', label: 'F_NYN' },
+  { value: 'G_YNN', label: 'G_YNN' },
+  { value: 'H_NNN', label: 'H_NNN' },
 ]
+
 
 export const CARRIERS = ['AT&T', 'Verizon', 'T-Mobile', 'Unlocked', 'Unknown']
 

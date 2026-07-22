@@ -12,20 +12,6 @@ CREATE TYPE partner_transaction_status AS ENUM (
   'REJECTED'
 );
 
-CREATE TABLE IF NOT EXISTS partners (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name              TEXT NOT NULL,
-  equity_share      NUMERIC(5,2) NOT NULL DEFAULT 33.33,
-  balance           NUMERIC(12,2) NOT NULL DEFAULT 0,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Seed partners
-INSERT INTO partners (name, equity_share, balance) VALUES 
-('Muheeb', 33.34, 0), 
-('Beshair', 33.33, 0),
-('Faisal', 33.33, 0);
 
 CREATE TABLE IF NOT EXISTS partner_transactions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

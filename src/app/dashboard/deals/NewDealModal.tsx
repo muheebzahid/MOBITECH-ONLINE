@@ -143,17 +143,48 @@ export default function NewDealModal({ onClose }: Props) {
             <div className="form-row-2">
               <div className="form-group">
                 <label className="form-label">Supplier *</label>
-                <select name="supplier" className="form-input" value={supplier} onChange={e => setSupplier(e.target.value)} required>
+                <select 
+                  name="supplier" 
+                  className="form-input" 
+                  value={supplier} 
+                  onChange={e => {
+                    const newSupplier = e.target.value
+                    setSupplier(newSupplier)
+                    if (newSupplier === 'ECOATM') {
+                      setPlatform('ECOATM')
+                      setAuctionFeePct('0')
+                    } else if (newSupplier === 'ATT') {
+                      setPlatform('BSTOCK')
+                      setAuctionFeePct('2')
+                    }
+                  }} 
+                  required
+                >
                   {SUPPLIERS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Auction Platform *</label>
-                <select name="auction_platform" className="form-input" value={platform} onChange={e => setPlatform(e.target.value)} required>
+                <select 
+                  name="auction_platform" 
+                  className="form-input" 
+                  value={platform} 
+                  onChange={e => {
+                    const newPlatform = e.target.value
+                    setPlatform(newPlatform)
+                    if (newPlatform === 'BSTOCK') {
+                      setAuctionFeePct('2')
+                    } else {
+                      setAuctionFeePct('0')
+                    }
+                  }} 
+                  required
+                >
                   {PLATFORMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
             </div>
+
           </div>
 
           {/* Section: Product Details / Line Items */}

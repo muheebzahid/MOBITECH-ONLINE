@@ -1,4 +1,5 @@
 import { getInvoices, getPendingInvoices } from '@/lib/sales/actions'
+import { getClients } from '@/lib/clients/actions'
 import { getUserRole } from '@/lib/admin/actions'
 import { redirect } from 'next/navigation'
 import SalesClient from './SalesClient'
@@ -10,5 +11,6 @@ export default async function SalesPage() {
   if (role === 'LOGISTICS') redirect('/dashboard')
   const invoices = await getInvoices()
   const pendingInvoices = await getPendingInvoices()
-  return <SalesClient invoices={invoices} pendingInvoices={pendingInvoices || []} />
+  const clients = await getClients()
+  return <SalesClient invoices={invoices} pendingInvoices={pendingInvoices || []} clients={clients} />
 }

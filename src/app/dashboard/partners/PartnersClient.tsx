@@ -12,8 +12,20 @@ interface Props {
 }
 
 function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(n)
+  const parts = Number(n || 0).toString().split('.')
+  const integerPart = parts[0]
+  let decimalPart = parts[1] || ''
+  
+  if (decimalPart.length < 3) {
+    decimalPart = decimalPart.padEnd(3, '0')
+  } else {
+    decimalPart = decimalPart.substring(0, 3)
+  }
+  
+  const formattedInteger = new Intl.NumberFormat('en-US').format(parseFloat(integerPart))
+  return `$${formattedInteger}.${decimalPart}`
 }
+
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })

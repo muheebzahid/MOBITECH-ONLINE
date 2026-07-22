@@ -1,0 +1,12 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log
+README.md
+.next
+.git
+.agents
+AGENTS.md
+CLAUDE.md
+start-erp.bat
+supabase

@@ -35,7 +35,8 @@ export async function getShipmentById(id: string) {
       shipment_deals(
         deal_id,
         deals(id, deal_number, model, storage, grade, carrier, color, quantity, total_commitment, status, auction_won_date)
-      )
+      ),
+      shipment_documents(*)
     `)
     .eq('id', id)
     .single()
@@ -77,6 +78,39 @@ export async function createShipment(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  // Upload documents if attached
+  const filesToUpload: File[] = []
+  const documentsList = formData.getAll('documents') as File[]
+  if (documentsList.length > 0) {
+    filesToUpload.push(...documentsList)
+  }
+  const singleDoc = formData.get('document') as File | null
+  if (singleDoc && singleDoc.size > 0) {
+    filesToUpload.push(singleDoc)
+  }
+
+  for (const documentFile of filesToUpload) {
+    if (documentFile && documentFile.size > 0) {
+      const fileExt = documentFile.name.split('.').pop()
+      const fileName = `${shipment.id}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`
+      const { error: uploadError } = await supabase.storage
+        .from('shipments')
+        .upload(fileName, documentFile)
+
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('shipments')
+          .getPublicUrl(fileName)
+
+        await supabase.from('shipment_documents').insert({
+          shipment_id: shipment.id,
+          name: documentFile.name,
+          file_url: publicUrl
+        })
+      }
+    }
+  }
 
   // Link deals to shipment
   if (dealIds.length > 0) {
@@ -197,8 +231,82 @@ export async function updateShipment(shipmentId: string, formData: FormData) {
 
   if (error) return { error: error.message }
 
+  // Propagate updated logistics cost to scanned inventory items
+  const totalLogisticsCost = Number(payload.sb_fee || 0) + Number(payload.freight_cost || 0) + Number(payload.duty_amount || 0) + Number(payload.turbo_fee || 0)
+  const { data: shipmentDeals } = await supabase
+    .from('shipment_deals')
+    .select('deal_id, deals(quantity)')
+    .eq('shipment_id', shipmentId)
+
+  if (shipmentDeals && shipmentDeals.length > 0) {
+    const totalShipmentUnits = shipmentDeals.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0)
+    const shippingCostPerUnit = totalShipmentUnits > 0 ? (totalLogisticsCost / totalShipmentUnits) : 0
+
+    for (const sd of shipmentDeals) {
+      if (sd.deal_id) {
+        await supabase
+          .from('inventory_items')
+          .update({ logistics_cost: shippingCostPerUnit })
+          .eq('deal_id', sd.deal_id)
+      }
+    }
+  }
+
+  // Upload documents if attached
+  const filesToUpload: File[] = []
+  const documentsList = formData.getAll('documents') as File[]
+  if (documentsList.length > 0) {
+    filesToUpload.push(...documentsList)
+  }
+  const singleDoc = formData.get('document') as File | null
+  if (singleDoc && singleDoc.size > 0) {
+    filesToUpload.push(singleDoc)
+  }
+
+  for (const documentFile of filesToUpload) {
+    if (documentFile && documentFile.size > 0) {
+      const fileExt = documentFile.name.split('.').pop()
+      const fileName = `${shipmentId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`
+      const { error: uploadError } = await supabase.storage
+        .from('shipments')
+        .upload(fileName, documentFile)
+
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('shipments')
+          .getPublicUrl(fileName)
+
+        await supabase.from('shipment_documents').insert({
+          shipment_id: shipmentId,
+          name: documentFile.name,
+          file_url: publicUrl
+        })
+      }
+    }
+  }
+
   revalidatePath('/dashboard/logistics')
   revalidatePath(`/dashboard/logistics/${shipmentId}`)
+  return { success: true }
+}
+
+// ── Remove shipment document ─────────────────────────────────
+export async function removeShipmentDocument(documentId: string, fileUrl: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const fileName = fileUrl.split('/').pop()
+  if (fileName) {
+    await supabase.storage.from('shipments').remove([fileName])
+  }
+
+  const { error } = await supabase
+    .from('shipment_documents')
+    .delete()
+    .eq('id', documentId)
+
+  if (error) return { error: error.message }
   return { success: true }
 }
 
@@ -272,6 +380,18 @@ export async function deleteShipment(shipmentId: string) {
   const { error } = await supabaseAdmin.from('shipments').delete().eq('id', shipmentId)
   if (error) return { error: error.message }
 
+  revalidatePath('/dashboard/logistics')
+  return { success: true }
+}
+
+export async function updateShipmentHandler(shipmentId: string, handledBy: string | null) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('shipments')
+    .update({ handled_by: handledBy })
+    .eq('id', shipmentId)
+    
+  if (error) return { error: error.message }
   revalidatePath('/dashboard/logistics')
   return { success: true }
 }

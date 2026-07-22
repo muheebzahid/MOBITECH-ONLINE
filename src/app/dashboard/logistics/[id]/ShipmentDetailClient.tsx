@@ -3,11 +3,25 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { SHIPMENT_STATUSES, SHIPMENT_STATUS_ORDER, CARRIERS, type ShipmentStatus } from '@/lib/logistics/constants'
-import { updateShipmentStatus, updateShipment, addDealToShipment, removeDealFromShipment, deleteShipment } from '@/lib/logistics/actions'
+import { updateShipmentStatus, updateShipment, addDealToShipment, removeDealFromShipment, deleteShipment, removeShipmentDocument } from '@/lib/logistics/actions'
 import { useRole } from '@/components/RoleProvider'
 
-function fmtS(n: number) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n||0) }
-function fmt(n: number) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits: 3, maximumFractionDigits: 3}).format(n||0) }
+function fmt(n: number) {
+  const parts = Number(n || 0).toString().split('.')
+  const integerPart = parts[0]
+  let decimalPart = parts[1] || ''
+  
+  if (decimalPart.length < 3) {
+    decimalPart = decimalPart.padEnd(3, '0')
+  } else {
+    decimalPart = decimalPart.substring(0, 3)
+  }
+  
+  const formattedInteger = new Intl.NumberFormat('en-US').format(parseFloat(integerPart))
+  return `$${formattedInteger}.${decimalPart}`
+}
+const fmtS = fmt
+
 function fmtD(d: string|null|undefined) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}) }
 
 const LEGS = [
@@ -52,6 +66,7 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
     condition_notes: shipment.condition_notes||'',
     notes: shipment.notes||'',
   })
+  const [editAttachedFiles, setEditAttachedFiles] = useState<File[]>([])
   const [error, setError] = useState('')
 
   const currentStep = SHIPMENT_STATUS_ORDER.indexOf(shipment.status)
@@ -87,9 +102,41 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
     startTransition(async () => {
       const fd = new FormData()
       Object.entries(editForm).forEach(([k,v]) => fd.append(k, String(v)))
+      if (editAttachedFiles.length > 0) {
+        editAttachedFiles.forEach(file => {
+          fd.append('documents', file)
+        })
+      }
       const result = await updateShipment(shipment.id, fd)
       if (result.error) { setError(result.error); return }
       setShowEdit(false)
+      setEditAttachedFiles([])
+      router.refresh()
+    })
+  }
+
+  const handleUploadNewDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setError('')
+    startTransition(async () => {
+      const fd = new FormData()
+      files.forEach(file => {
+        fd.append('documents', file)
+      })
+      Object.entries(editForm).forEach(([k,v]) => fd.append(k, String(v)))
+      const result = await updateShipment(shipment.id, fd)
+      if (result.error) { setError(result.error); return }
+      router.refresh()
+    })
+  }
+
+  const handleRemoveDoc = (docId: string, url: string) => {
+    if (!window.confirm("Are you sure you want to delete this document?")) return
+    setError('')
+    startTransition(async () => {
+      const result = await removeShipmentDocument(docId, url)
+      if (result.error) { setError(result.error); return }
       router.refresh()
     })
   }
@@ -223,6 +270,46 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
               <div className="panel-title" style={{marginTop:'16px'}}>Notes</div>
               <p className="info-notes">{shipment.notes}</p>
             </>
+          )}
+        </div>
+
+        {/* Shipment Documents / Photos */}
+        <div className="deal-info-panel" style={{height:'fit-content'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+            <div className="panel-title" style={{marginBottom:0}}>Documents &amp; Photos</div>
+            {role !== 'FINANCE' && (
+              <label className="btn-ghost" style={{padding:'4px 12px',fontSize:'0.85rem',cursor:'pointer'}}>
+                Upload
+                <input 
+                  type="file" 
+                  accept="image/*,application/pdf" 
+                  style={{display:'none'}} 
+                  multiple
+                  onChange={handleUploadNewDoc} 
+                />
+              </label>
+            )}
+          </div>
+          {(!shipment.shipment_documents || shipment.shipment_documents.length === 0) ? (
+            <p className="history-empty">No documents attached.</p>
+          ) : (
+            <div style={{display:'flex', flexDirection:'column', gap:'8px'}}>
+              {shipment.shipment_documents.map((doc: any) => (
+                <div key={doc.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'var(--bg-base)', borderRadius:'6px', border:'1px solid var(--border-subtle)'}}>
+                  <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{fontSize:'13px', color:'var(--accent-indigo)', fontWeight:500, textDecoration:'none'}} className="deal-number-link">
+                    {doc.name}
+                  </a>
+                  {role !== 'FINANCE' && (
+                    <button 
+                      onClick={() => handleRemoveDoc(doc.id, doc.file_url)} 
+                      style={{background:'none', border:'none', color:'var(--accent-rose)', cursor:'pointer', fontSize:'13px', padding:'2px 6px'}}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -429,6 +516,16 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
               </div>
               <div className="form-group"><label className="form-label">Delivered to Mobitech</label><input type="date" className="form-input" value={editForm.delivered_mobitech_date} onChange={e=>setEditForm(f=>({...f,delivered_mobitech_date:e.target.value}))}/></div>
               <div className="form-group"><label className="form-label">Condition Notes</label><textarea className="form-input" rows={2} value={editForm.condition_notes} onChange={e=>setEditForm(f=>({...f,condition_notes:e.target.value}))}/></div>
+              <div className="form-group">
+                <label className="form-label">Attach Document or Photo</label>
+                <input 
+                  type="file" 
+                  className="form-input" 
+                  accept="image/*,application/pdf"
+                  multiple
+                  onChange={e => setEditAttachedFiles(Array.from(e.target.files || []))} 
+                />
+              </div>
               <div className="form-group"><label className="form-label">Notes</label><textarea className="form-input" rows={2} value={editForm.notes} onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))}/></div>
               {error && <div className="login-error">&#9888; {error}</div>}
               <div className="modal-actions">

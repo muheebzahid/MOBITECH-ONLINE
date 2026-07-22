@@ -3,6 +3,58 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+function enrichDealFinancials(deal: any) {
+  if (!deal) return deal
+
+  const dealQty = deal.quantity || 0
+  const baseUnitCost = dealQty > 0 ? (deal.total_commitment || 0) / dealQty : 0
+  
+  // Calculate shipping cost per unit
+  const shipment = deal.shipment_deals?.[0]?.shipments
+  let shippingCostPerUnit = 0
+  if (shipment) {
+    const totalShipmentUnits = shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0
+    shippingCostPerUnit = totalShipmentUnits > 0 ? (shipment.total_logistics_cost || 0) / totalShipmentUnits : 0
+  }
+
+  // Filter active line items (non-cancelled, non-draft)
+  const activeLineItems = (deal.invoice_line_items || []).filter((li: any) => {
+    const status = li.invoices?.status || li.invoice_status
+    return status !== 'CANCELLED' && status !== 'DRAFT'
+  })
+
+  const totalRevenue = activeLineItems.reduce((sum: number, li: any) => sum + (li.quantity || 0) * (li.unit_price || 0), 0)
+  const soldQty = activeLineItems.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+  
+  const totalCogs = soldQty * (baseUnitCost + shippingCostPerUnit)
+
+  // Amex Profit based on paid-in-full units
+  const paidLineItems = activeLineItems.filter((li: any) => {
+    const status = li.invoices?.status || li.invoice_status
+    return status === 'PAID'
+  })
+  const paidQty = paidLineItems.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+
+  let amexProfitMultiplier = 0
+  if (deal.funding_source === 'AMEX') {
+    amexProfitMultiplier = 1
+  } else if (deal.funding_source === 'MIXED') {
+    const commitment = Number(deal.total_commitment) || 1
+    amexProfitMultiplier = (Number(deal.amex_amount) || 0) / commitment
+  }
+
+  const amexProfit = paidQty * baseUnitCost * amexProfitMultiplier * 0.02
+  const grossProfit = totalRevenue - totalCogs + amexProfit
+
+  return {
+    ...deal,
+    total_revenue: totalRevenue,
+    total_cogs: totalCogs,
+    gross_profit: grossProfit,
+    amex_profit: amexProfit
+  }
+}
+
 // Generate deal number: ATT-2026-0001
 async function generateDealNumber(supplier: string): Promise<string> {
   const supabase = await createClient()
@@ -39,9 +91,16 @@ export async function createDeal(formData: FormData) {
   let unit_cost       = parseFloat(formData.get('unit_cost') as string) || 0
   let total_cost      = quantity * unit_cost
   
-  const auction_fee_pct = parseFloat(formData.get('auction_fee_pct') as string) || 2
+  let auction_fee_pct = parseFloat(formData.get('auction_fee_pct') as string) || 2
+  if (auction_platform !== 'BSTOCK') {
+    auction_fee_pct = 0
+  }
   const other_fees      = parseFloat(formData.get('other_fees') as string) || 0
-  const funding_source  = formData.get('funding_source') as string
+
+  let funding_source  = formData.get('funding_source') as string
+  if (supplier === 'TMOBILE') {
+    funding_source = 'SB_CASH'
+  }
   const amex_statement_date = formData.get('amex_statement_date') as string
   const notes           = formData.get('notes') as string
 
@@ -84,7 +143,7 @@ export async function createDeal(formData: FormData) {
   let cash_amount = 0
   if (funding_source === 'AMEX') {
     amex_amount = total_commitment
-  } else if (funding_source === 'CASH_POOL') {
+  } else if (funding_source === 'TURBO_CASH' || funding_source === 'SB_CASH') {
     cash_amount = total_commitment
   } else {
     amex_amount = parseFloat(formData.get('amex_amount') as string) || 0
@@ -185,9 +244,23 @@ export async function updateDealStatus(dealId: string, newStatus: string, notes?
     DEAL_CLOSED:           'deal_closed_date',
   }
 
-  const updatePayload: Record<string, string> = { status: newStatus }
+  const updatePayload: Record<string, any> = { status: newStatus }
   if (timestampField[newStatus]) {
     updatePayload[timestampField[newStatus]] = dateOverride ? new Date(dateOverride).toISOString() : new Date().toISOString()
+  }
+
+  if (newStatus === 'DEAL_CLOSED') {
+    const { data: enriched } = await supabase
+      .from('deals')
+      .select(`*, items:deal_items(*), shipment_deals(shipments(*, shipment_deals(deal_id, deals(id, deal_number, status, quantity)))), invoice_line_items(*, invoices(*))`)
+      .eq('id', dealId)
+      .single()
+    if (enriched) {
+      const financials = enrichDealFinancials(enriched)
+      updatePayload.total_revenue = financials.total_revenue
+      updatePayload.total_cogs = financials.total_cogs
+      updatePayload.gross_profit = financials.gross_profit
+    }
   }
 
   const LOGISTICS_STATUSES = [
@@ -250,15 +323,21 @@ export async function syncDealSoldStatus(dealId: string) {
   const supabase = await createClient()
   
   // Get deal
-  const { data: deal } = await supabase.from('deals').select('id, quantity, status').eq('id', dealId).single()
+  const { data: deal } = await supabase
+    .from('deals')
+    .select(`
+      *,
+      items:deal_items(*),
+      shipment_deals(shipments(*, shipment_deals(deal_id, deals(id, deal_number, status, quantity)))),
+      invoice_line_items(*, invoices(*))
+    `)
+    .eq('id', dealId)
+    .single()
+
   if (!deal) return
 
   // Get valid line items
-  const { data: lineItems } = await supabase.from('invoice_line_items')
-    .select('quantity, invoices(status)')
-    .eq('deal_id', dealId)
-
-  const invoicedQty = (lineItems || [])
+  const invoicedQty = (deal.invoice_line_items || [])
     .filter((i: any) => i.invoices && i.invoices.status !== 'CANCELLED' && i.invoices.status !== 'VOIDED')
     .reduce((sum: number, i: any) => sum + (i.quantity || 0), 0)
 
@@ -271,8 +350,22 @@ export async function syncDealSoldStatus(dealId: string) {
     newStatus = 'RECEIVED_BY_MOBITECH'
   }
 
+  // Recalculate financials
+  const financials = enrichDealFinancials(deal)
+
+  const updatePayload: Record<string, any> = {
+    total_revenue: financials.total_revenue,
+    total_cogs: financials.total_cogs,
+    gross_profit: financials.gross_profit
+  }
+
   if (newStatus !== deal.status) {
-    await supabase.from('deals').update({ status: newStatus }).eq('id', dealId)
+    updatePayload.status = newStatus
+  }
+
+  await supabase.from('deals').update(updatePayload).eq('id', dealId)
+
+  if (newStatus !== deal.status) {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       await supabase.from('deal_status_history').insert({
@@ -283,9 +376,10 @@ export async function syncDealSoldStatus(dealId: string) {
         changed_by: user.id,
       })
     }
-    revalidatePath(`/dashboard/deals/${dealId}`)
-    revalidatePath('/dashboard/deals')
   }
+
+  revalidatePath(`/dashboard/deals/${dealId}`)
+  revalidatePath('/dashboard/deals')
 }
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
@@ -317,10 +411,10 @@ export async function getDeals() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('deals')
-    .select('*, items:deal_items(*), shipment_deals(shipments(id, shipment_number, total_logistics_cost, shipment_deals(deals(quantity)))), invoice_line_items(quantity, unit_price, invoices(id, status, amount_paid))')
+    .select('*, items:deal_items(*), shipment_deals(shipments(id, shipment_number, total_logistics_cost, shipment_deals(deals(quantity)))), invoice_line_items(quantity, unit_price, deal_item_id, invoices(id, status, amount_paid, issue_date))')
     .order('created_at', { ascending: false })
   if (error) return []
-  return data
+  return data.map((deal: any) => enrichDealFinancials(deal))
 }
 
 export async function getDealById(id: string) {
@@ -329,9 +423,10 @@ export async function getDealById(id: string) {
   // Fetch core deal + status history + invoices + inventory + items + shipment info with sibling deals
   const { data, error } = await supabase
     .from('deals')
-    .select(`*, items:deal_items(*), deal_status_history(*), invoice_line_items(*, invoices(*)), inventory_items(*), shipment_deals(shipments(*, shipment_deals(deal_id, deals(id, deal_number, status))))`)
+    .select(`*, deal_documents(*), items:deal_items(*), deal_status_history(*), invoice_line_items(*, invoices(*)), inventory_items(*), shipment_deals(shipments(*, shipment_deals(deal_id, deals(id, deal_number, status, quantity))))`)
     .eq('id', id)
     .single()
+
 
   if (error || !data) return null
 
@@ -342,7 +437,8 @@ export async function getDealById(id: string) {
     .eq('deal_id', id)
     .order('edited_at', { ascending: false })
 
-  return { ...data, deal_edit_history: editHistory || [] }
+  const enriched = enrichDealFinancials(data)
+  return { ...enriched, deal_edit_history: editHistory || [] }
 }
 
 export async function updateDeal(dealId: string, formData: FormData) {
@@ -373,9 +469,16 @@ export async function updateDeal(dealId: string, formData: FormData) {
   let unit_cost         = parseFloat(formData.get('unit_cost') as string) || 0
   let total_cost        = quantity * unit_cost
   
-  const auction_fee_pct   = parseFloat(formData.get('auction_fee_pct') as string) || 2
+  let auction_fee_pct   = parseFloat(formData.get('auction_fee_pct') as string) || 2
+  if (auction_platform !== 'BSTOCK') {
+    auction_fee_pct = 0
+  }
   const other_fees        = parseFloat(formData.get('other_fees') as string) || 0
-  const funding_source    = formData.get('funding_source') as string
+
+  let funding_source    = formData.get('funding_source') as string
+  if (supplier === 'TMOBILE') {
+    funding_source = 'SB_CASH'
+  }
   const amex_statement_date = formData.get('amex_statement_date') as string
   const notes             = formData.get('notes') as string
   const edit_note         = formData.get('edit_note') as string
@@ -418,7 +521,7 @@ export async function updateDeal(dealId: string, formData: FormData) {
   let amex_amount = 0
   let cash_amount = 0
   if (funding_source === 'AMEX')       amex_amount = total_commitment
-  else if (funding_source === 'CASH_POOL') cash_amount = total_commitment
+  else if (funding_source === 'TURBO_CASH' || funding_source === 'SB_CASH') cash_amount = total_commitment
   else {
     amex_amount = parseFloat(formData.get('amex_amount') as string) || 0
     cash_amount = parseFloat(formData.get('cash_amount') as string) || 0
@@ -497,13 +600,46 @@ export async function updateDeal(dealId: string, formData: FormData) {
     .eq('id', dealId)
   if (updateErr) return { error: updateErr.message }
 
-  // Sync items
+
+
+  // Sync items (smart upsert to preserve ids and invoice_line_items links)
   if (items) {
-    // Delete old items
-    await supabase.from('deal_items').delete().eq('deal_id', dealId)
-    // Insert new items
-    if (items.length > 0) {
-      const itemsToInsert = items.map(i => ({
+    // 1. Get existing items from database
+    const { data: dbItems } = await supabase
+      .from('deal_items')
+      .select('id')
+      .eq('deal_id', dealId)
+      
+    const dbItemIds = (dbItems || []).map(item => item.id)
+    const submittedItemIds = items.map(i => i.id).filter(Boolean)
+    
+    // Delete removed items
+    const idsToDelete = dbItemIds.filter(id => !submittedItemIds.includes(id))
+    if (idsToDelete.length > 0) {
+      await supabase.from('deal_items').delete().in('id', idsToDelete)
+    }
+
+    // Fetch shipment details to compute pro-rated shipping cost
+    const { data: dealRec } = await supabase
+      .from('deals')
+      .select('shipment_deals(shipments(sb_fee, freight_cost, duty_amount, turbo_fee, shipment_deals(deals(quantity))))')
+      .eq('id', dealId)
+      .single()
+      
+    let shippingCostPerUnit = 0
+    const shipmentObj: any = Array.isArray(dealRec?.shipment_deals?.[0]?.shipments)
+      ? dealRec?.shipment_deals?.[0]?.shipments?.[0]
+      : dealRec?.shipment_deals?.[0]?.shipments
+
+    if (shipmentObj) {
+      const totalLogisticsCost = Number(shipmentObj.sb_fee || 0) + Number(shipmentObj.freight_cost || 0) + Number(shipmentObj.duty_amount || 0) + Number(shipmentObj.turbo_fee || 0)
+      const totalShipmentUnits = shipmentObj.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0
+      shippingCostPerUnit = totalShipmentUnits > 0 ? (totalLogisticsCost / totalShipmentUnits) : 0
+    }
+    
+    // Update or Insert items
+    for (const i of items) {
+      const itemData = {
         deal_id: dealId,
         model: i.model,
         storage: i.storage || null,
@@ -512,13 +648,38 @@ export async function updateDeal(dealId: string, formData: FormData) {
         carrier: i.carrier || null,
         quantity: parseInt(i.quantity) || 0,
         unit_cost: parseFloat(i.unit_cost) || 0
-      }))
-      await supabase.from('deal_items').insert(itemsToInsert)
+      }
+      
+      if (i.id && dbItemIds.includes(i.id)) {
+        // Update existing item
+        await supabase.from('deal_items').update(itemData).eq('id', i.id)
+      } else {
+        // Insert new item
+        await supabase.from('deal_items').insert(itemData)
+      }
+
+      // Propagate unit_cost and logistics_cost to inventory_items scanned under this SKU
+      let query = supabase.from('inventory_items')
+        .update({
+          unit_cost: parseFloat(i.unit_cost) || 0,
+          logistics_cost: shippingCostPerUnit
+        })
+        .eq('deal_id', dealId)
+        .eq('model', i.model)
+        
+      if (i.storage) query = query.eq('storage', i.storage)
+      else query = query.is('storage', null)
+      
+      if (i.grade) query = query.eq('grade', i.grade)
+      else query = query.is('grade', null)
+      
+      await query
     }
+    
     field_changes.push({
       field: 'items',
       label: 'Line Items',
-      old_value: `${current.items?.length || 0} items`,
+      old_value: `${dbItemIds.length} items`,
       new_value: `${items.length} items`,
     })
   }
@@ -555,7 +716,6 @@ export async function bulkCreateDeals(dealsData: any[]) {
 
   const year = new Date().getFullYear()
   
-  // To avoid duplicate deal numbers, we fetch the current count for the year
   const { count } = await supabase
     .from('deals')
     .select('*', { count: 'exact', head: true })
@@ -563,71 +723,297 @@ export async function bulkCreateDeals(dealsData: any[]) {
 
   let startSeq = (count || 0) + 1
 
-  const newDeals = dealsData.map((d, index) => {
+  // Resolve deal numbers and assign temp generated ones for empty ones so they do not group
+  const rowsWithDealNumbers = dealsData.map((d, index) => {
     const supplier = String(d.vendor || 'OTHER').toUpperCase()
     const prefix = supplier === 'ECOATM' ? 'ECO' : supplier === 'ATT' ? 'ATT' : 'DL'
-    const seq = String(startSeq + index).padStart(4, '0')
-    const deal_number = `${prefix}-${year}-${seq}`
-
-    const quantity = parseInt(d.quantity) || 1
-    const unit_cost = parseFloat(d.unit_cost) || 0
-    const total_cost = unit_cost * quantity
-    const total_commitment = total_cost
     
+    let deal_number = d.deal_number ? String(d.deal_number).trim() : ''
+    
+    if (deal_number && /^\d+$/.test(deal_number)) {
+      const seq = deal_number.padStart(4, '0')
+      deal_number = `${prefix}-${year}-${seq}`
+    }
+    
+    if (!deal_number) {
+      const seq = String(startSeq + index).padStart(4, '0')
+      deal_number = `GEN-${prefix}-${year}-${seq}`
+    }
+
+    return {
+      ...d,
+      resolved_deal_number: deal_number
+    }
+  })
+
+  // Group by resolved_deal_number
+  const groups: Record<string, typeof rowsWithDealNumbers> = {}
+  for (const row of rowsWithDealNumbers) {
+    const key = row.resolved_deal_number
+    if (!groups[key]) groups[key] = []
+    groups[key].push(row)
+  }
+
+  // Build the unique deals list
+  const dealsToUpsert = Object.keys(groups).map((dealNumber) => {
+    const items = groups[dealNumber]
+    const firstItem = items[0]
+
+    const quantity = items.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)
+    const total_cost = items.reduce((sum, item) => sum + (parseFloat(item.total_cost) || (parseFloat(item.unit_cost) || 0) * (parseInt(item.quantity) || 0)), 0)
+    const unit_cost = quantity > 0 ? total_cost / quantity : 0
+
+    let auction_fee_pct = parseFloat(firstItem.auction_fee_pct) || 0
+    if ((firstItem.auction_platform || 'DIRECT') !== 'BSTOCK') {
+      auction_fee_pct = 0
+    }
+    const other_fees = parseFloat(firstItem.other_fees) || 0
+    const auction_fee = parseFloat(((total_cost * auction_fee_pct) / 100).toFixed(2))
+    const total_commitment = total_cost + auction_fee + other_fees
+
+
+    const funding_source = (firstItem.funding_source || 'TURBO_CASH').toUpperCase()
+    const amex_amount = funding_source === 'AMEX' ? total_commitment : (funding_source === 'MIXED' ? total_commitment / 2 : 0)
+    const cash_amount = (funding_source === 'TURBO_CASH' || funding_source === 'SB_CASH') ? total_commitment : (funding_source === 'MIXED' ? total_commitment / 2 : 0)
+
     let dealDate = new Date()
-    if (d.date) {
-      const parsedDate = new Date(d.date)
+    if (firstItem.date) {
+      const parsedDate = new Date(firstItem.date)
       if (!isNaN(parsedDate.getTime())) {
         dealDate = parsedDate
       }
     }
 
+    const amex_statement_date = firstItem.amex_statement_date && !isNaN(new Date(firstItem.amex_statement_date).getTime())
+      ? new Date(firstItem.amex_statement_date).toISOString().split('T')[0]
+      : null
+
+    const isMixed = items.length > 1
+    const model = isMixed ? 'Mixed Lot' : (firstItem.model || 'Unknown')
+    const storage = isMixed ? 'Mixed' : (firstItem.storage || null)
+    const grade = isMixed ? 'Mixed' : (firstItem.grade || null)
+    const color = isMixed ? 'Mixed' : (firstItem.color || null)
+    const carrier = isMixed ? 'Mixed' : (firstItem.carrier || null)
+
+    const notesList = items.map(i => i.notes || (i.condition ? `Condition: ${i.condition}` : '')).filter(Boolean)
+    const notes = notesList.length > 0 ? Array.from(new Set(notesList)).join(' | ') : null
+
+    let final_deal_number = dealNumber
+    if (final_deal_number.startsWith('GEN-')) {
+      final_deal_number = final_deal_number.substring(4)
+    }
+
     return {
-      deal_number,
-      supplier: d.vendor || 'OTHER',
-      auction_platform: 'DIRECT', // default for bulk uploads
-      model: d.model || 'Unknown',
-      storage: d.storage || null,
-      grade: d.grade || null,
+      deal_number: final_deal_number,
+      supplier: firstItem.vendor || 'OTHER',
+      auction_platform: firstItem.auction_platform || 'DIRECT',
+      model,
+      storage,
+      grade,
+      color,
+      carrier,
       quantity,
       unit_cost,
       total_cost,
-      auction_fee: 0,
-      other_fees: 0,
+      auction_fee,
+      other_fees,
       total_commitment,
-      funding_source: 'CASH_POOL',
-      amex_amount: 0,
-      cash_amount: total_commitment,
+      funding_source,
+      amex_amount,
+      cash_amount,
       status: 'AUCTION_WON',
       auction_won_date: dealDate.toISOString(),
       created_at: dealDate.toISOString(),
-      notes: d.condition ? `Condition: ${d.condition}` : null,
+      notes,
       created_by: user.id,
+      amex_statement_date,
     }
   })
 
-  const { data: insertedDeals, error } = await supabase.from('deals').insert(newDeals).select()
+  // Upsert unique deals
+  const { data: insertedDeals, error } = await supabase
+    .from('deals')
+    .upsert(dealsToUpsert, { onConflict: 'deal_number' })
+    .select()
   
   if (error) return { error: error.message }
   
-  // Also insert the single line item for each bulk deal to keep the schema happy
+  // Insert or refresh all child deal items
   if (insertedDeals && insertedDeals.length > 0) {
-    const itemsToInsert = insertedDeals.map((deal, i) => {
-      const sourceData = dealsData[i]
-      return {
-        deal_id: deal.id,
-        model: deal.model,
-        storage: deal.storage || null,
-        grade: deal.grade || null,
-        carrier: sourceData.carrier || null,
-        color: sourceData.color || null,
-        quantity: deal.quantity,
-        unit_cost: deal.unit_cost
+    const itemsToInsert: any[] = []
+    
+    for (const deal of insertedDeals) {
+      let groupKey = deal.deal_number
+      if (!groups[groupKey] && groups['GEN-' + groupKey]) {
+        groupKey = 'GEN-' + groupKey
       }
-    })
+
+      const rows = groups[groupKey]
+      if (rows) {
+        for (const row of rows) {
+          const qty = parseInt(row.quantity) || 1
+          const totalCost = parseFloat(row.total_cost) || 0
+          const unitCost = parseFloat(row.unit_cost) || (qty > 0 ? totalCost / qty : 0)
+          
+          itemsToInsert.push({
+            deal_id: deal.id,
+            model: row.model || 'Unknown',
+            storage: row.storage || null,
+            grade: row.grade || null,
+            carrier: row.carrier || null,
+            color: row.color || null,
+            quantity: qty,
+            unit_cost: unitCost
+          })
+        }
+      }
+    }
+    
+    const dealIds = insertedDeals.map(d => d.id)
+    await supabase.from('deal_items').delete().in('deal_id', dealIds)
     await supabase.from('deal_items').insert(itemsToInsert)
   }
   
   revalidatePath('/dashboard/deals')
-  return { success: true, count: newDeals.length }
+  return { success: true, count: dealsToUpsert.length }
+}
+
+export async function moveSkuToOnlineInventory(
+  dealId: string,
+  dealItemId: string,
+  originalModel: string,
+  quantityToMove: number,
+  totalLandedCost: number
+) {
+  const supabase = await createClient()
+
+  // 1. (Obsolete) No longer using Master Deal, we generate inventory_items directly.
+
+  // 2. Get original item
+  const { data: origItem, error: oiError } = await supabase
+    .from('deal_items')
+    .select('*')
+    .eq('id', dealItemId)
+    .single()
+  if (oiError) return { error: oiError.message }
+
+  // 3. Create invoice for original deal (selling to Internal - Online Inventory at Cost)
+  let { data: client, error: cError } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('name', 'Internal - Online Inventory')
+    .single()
+    
+  let clientId = client?.id
+  if (!clientId) {
+    const { data: newClient, error: ncError } = await supabase
+      .from('clients')
+      .insert({ name: 'Internal - Online Inventory' })
+      .select()
+      .single()
+    if (ncError) return { error: ncError.message }
+    clientId = newClient.id
+  }
+
+  // Create invoice
+  const { data: invoice, error: invError } = await supabase
+    .from('invoices')
+    .insert({
+      client_id: clientId,
+      customer_name: 'Internal - Online Inventory',
+      invoice_number: `INV-ONL-${Date.now()}`,
+      status: 'PAID',
+    })
+    .select()
+    .single()
+  if (invError) return { error: invError.message }
+
+  // Create invoice line item
+  const { error: lineError } = await supabase
+    .from('invoice_line_items')
+    .insert({
+      invoice_id: invoice.id,
+      deal_id: dealId,
+      deal_item_id: dealItemId,
+      description: `Moved to online inventory: ${originalModel}`,
+      quantity: quantityToMove,
+      unit_price: totalLandedCost
+    })
+  if (lineError) return { error: lineError.message }
+
+  // 4. Generate Inventory Items for Refurbishment Pipeline
+  const itemsToInsert = Array.from({ length: quantityToMove }).map(() => ({
+    deal_id: dealId,
+    model: origItem.model,
+    storage: origItem.storage,
+    grade: origItem.grade,
+    unit_cost: totalLandedCost, // Inherit landed cost
+    logistics_cost: 0, 
+    repair_cost: 0,
+    status: 'AVAILABLE',
+    location: 'DUBAI_WAREHOUSE',
+    refurb_stage: 'SEPARATED'
+  }))
+
+  const { error: invError2 } = await supabase
+    .from('inventory_items')
+    .insert(itemsToInsert)
+  
+  if (invError2) return { error: invError2.message }
+
+  revalidatePath('/dashboard/deals')
+  revalidatePath('/dashboard/deals/' + dealId)
+  return { success: true }
+}
+
+export async function uploadDealDocument(dealId: string, formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+  
+  const file = formData.get('file') as File
+  if (!file) return { error: 'No file provided' }
+  
+  const fileName = file.name
+  const ext = fileName.split('.').pop()
+  const filePath = `deals/${dealId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+  
+  const { error: uploadError } = await supabase.storage
+    .from('invoices')
+    .upload(filePath, file)
+    
+  if (uploadError) return { error: uploadError.message }
+  
+  const { data: publicUrlData } = supabase.storage.from('invoices').getPublicUrl(filePath)
+  const url = publicUrlData.publicUrl
+  
+  const { error: dbError } = await supabase.from('deal_documents').insert({
+    deal_id: dealId,
+    file_name: fileName,
+    file_url: url,
+    file_type: file.type || 'application/octet-stream',
+    file_size: file.size,
+    created_by: user.id
+  })
+  
+  if (dbError) return { error: dbError.message }
+  
+  revalidatePath(`/dashboard/deals/${dealId}`)
+  return { success: true }
+}
+
+export async function deleteDealDocument(docId: string, url: string, dealId: string) {
+  const supabase = await createClient()
+  
+  const pathParts = url.split('/invoices/')
+  if (pathParts.length > 1) {
+    const filePath = pathParts[1].split('?')[0]
+    await supabase.storage.from('invoices').remove([filePath])
+  }
+  
+  const { error } = await supabase.from('deal_documents').delete().eq('id', docId)
+  if (error) return { error: error.message }
+  
+  revalidatePath(`/dashboard/deals/${dealId}`)
+  return { success: true }
 }
