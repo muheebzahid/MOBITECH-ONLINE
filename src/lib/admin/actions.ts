@@ -8,7 +8,7 @@ export async function getUserRole() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   
-  // Permanent override and auto-fix for Super Admin
+  // Permanent override and auto-fix for approved Super Admin
   if (user.email === 'muheebzahid@gmail.com') {
     // Upsert to ensure the DB reflects SUPER_ADMIN so the dashboard reads it correctly
     await supabase.from('user_roles')
@@ -16,18 +16,8 @@ export async function getUserRole() {
     return 'SUPER_ADMIN'
   }
 
-  const { data } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single()
-  
-  if (!data) {
-    if (user.email === 'admin@example.com') { // Hardcoded bootstrap
-      await supabase.from('user_roles').insert({ user_id: user.id, email: user.email, role: 'SUPER_ADMIN' })
-      return 'SUPER_ADMIN'
-    }
-    // Default new users to SALES
-    await supabase.from('user_roles').insert({ user_id: user.id, email: user.email, role: 'SALES' })
-    return 'SALES'
-  }
-  return data.role as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE'
+  // Phase 1 testing: Deny all other users regardless of DB role
+  return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'DENIED'
 }
 
 export async function getAllUsers() {
