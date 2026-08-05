@@ -1,14 +1,17 @@
 'use client'
 
-import { useState, useTransition, Fragment } from 'react'
-import { updateInventoryLocation, updateRefurbStage, deleteInventoryItem } from '@/lib/inventory/actions'
+import { useState, useTransition, Fragment, useRef, useEffect } from 'react'
+import * as XLSX from 'xlsx'
+import { updateInventoryLocation, updateRefurbStage, deleteInventoryItem, updateInventoryItemImei, bulkUpdateInventoryItems } from '@/lib/inventory/actions'
 import { useRole } from '@/components/RoleProvider'
 
 const STAGES = [
   { id: 'SEPARATED', label: 'Separated' },
   { id: 'HANDED_TO_REFURBISH', label: 'Refurbishing' },
   { id: 'QC_DONE', label: 'QC Done' },
-  { id: 'READY_TO_SELL', label: 'Ready to Sell' }
+  { id: 'READY_TO_SELL', label: 'Ready to Sell' },
+  { id: 'ASSIGNED', label: 'Assigned to Order' },
+  { id: 'SOLD', label: 'Sold Online' }
 ]
 
 function fmtS(n: number) {
@@ -29,6 +32,29 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
   const [activeStage, setActiveStage] = useState('SEPARATED')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const q = urlParams.get('q')
+      if (q) {
+        setSearchTerm(q)
+        const matchingItem = inventory.find((it: any) => 
+          (it.imei && it.imei.toLowerCase() === q.toLowerCase()) || 
+          (it.serial_number && it.serial_number.toLowerCase() === q.toLowerCase())
+        )
+        if (matchingItem) {
+          setActiveStage(matchingItem.status)
+          setHighlightedItemId(matchingItem.id)
+          const timer = setTimeout(() => {
+            setHighlightedItemId(null)
+          }, 15000)
+          return () => clearTimeout(timer)
+        }
+      }
+    }
+  }, [inventory])
   
   const [editingRepair, setEditingRepair] = useState<string | null>(null)
   const [repairCost, setRepairCost] = useState<number>(0)
@@ -38,6 +64,9 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
 
   // Add Inventory Modal State
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingImeiId, setEditingImeiId] = useState<string | null>(null)
+  const [editImeiValue, setEditImeiValue] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedDealId, setSelectedDealId] = useState('')
   const [selectedItemId, setSelectedItemId] = useState('')
   const [moveQty, setMoveQty] = useState(1)
@@ -155,6 +184,72 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
     }
   }
 
+  const handleExportExcel = () => {
+    const itemsToExport = filtered.filter(i => selectedItems.has(i.id))
+    if (itemsToExport.length === 0) return
+
+    const data = itemsToExport.map(i => ({
+      ID: i.id,
+      'Deal Number': i.deals?.deal_number || '',
+      Model: i.model,
+      Specs: `${i.storage} / ${i.color} / Grade ${i.grade}`,
+      IMEI: i.imei || '',
+      'Serial Number': i.serial_number || '',
+      'Repair Cost': i.repair_cost || 0,
+      Status: i.status
+    }))
+
+    const worksheet = XLSX.utils.json_to_sheet(data)
+    
+    // Auto-size columns
+    worksheet['!cols'] = [
+      { wch: 36 }, // ID
+      { wch: 18 }, // Deal
+      { wch: 20 }, // Model
+      { wch: 25 }, // Specs
+      { wch: 20 }, // IMEI
+      { wch: 20 }, // Serial
+      { wch: 15 }, // Repair Cost
+      { wch: 15 }, // Status
+    ]
+
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
+    
+    const timestamp = new Date().toISOString().split('T')[0]
+    XLSX.writeFile(workbook, `inventory_update_${timestamp}.xlsx`)
+  }
+
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    startTransition(async () => {
+      const reader = new FileReader()
+      reader.onload = async (evt) => {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const worksheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[worksheetName]
+        const json = XLSX.utils.sheet_to_json(worksheet) as any[]
+        
+        const updates = json.map(row => ({
+          id: row['ID'],
+          imei: row['IMEI'] !== undefined ? String(row['IMEI']) : undefined,
+          serial_number: row['Serial Number'] !== undefined ? String(row['Serial Number']) : undefined,
+          repair_cost: row['Repair Cost'] !== undefined ? Number(row['Repair Cost']) : undefined
+        })).filter(u => u.id)
+        
+        if (updates.length > 0) {
+          await bulkUpdateInventoryItems(updates)
+        }
+        
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
   const handleBulkMove = (newStage: string) => {
     if (selectedItems.size === 0) return
     startTransition(async () => {
@@ -232,6 +327,16 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
             {activeStage === 'HANDED_TO_REFURBISH' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('QC_DONE')}>Mark QC Done</button>}
             {activeStage === 'QC_DONE' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('READY_TO_SELL')}>Ready to Sell</button>}
             
+            <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 8px' }}></div>
+            
+            <button className="btn-ghost" style={{padding: '4px 12px', border: '1px solid var(--border)'}} onClick={handleExportExcel}>Export Excel</button>
+            <input type="file" accept=".xlsx, .xls" style={{display: 'none'}} ref={fileInputRef} onChange={handleImportExcel} />
+            <button className="btn-ghost" style={{padding: '4px 12px', border: '1px solid var(--border)'}} onClick={() => fileInputRef.current?.click()} disabled={isPending}>
+              {isPending ? 'Importing...' : 'Import Excel'}
+            </button>
+            
+            <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 8px' }}></div>
+
             <button className="btn-ghost" style={{padding: '4px 12px', color: 'var(--status-red)'}} onClick={handleBulkDelete}>Delete Selected</button>
           </div>
         )}
@@ -264,7 +369,11 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
             {groupedEntries.map(([dealNum, items]) => (
               <Fragment key={dealNum}>
                 {items.map(item => (
-                  <tr key={item.id} className="deal-row">
+                  <tr 
+                    key={item.id} 
+                    className="deal-row"
+                    style={highlightedItemId === item.id ? { backgroundColor: 'var(--status-green-dim, rgba(16, 185, 129, 0.2))' } : {}}
+                  >
                     <td>
                       <input type="checkbox" checked={selectedItems.has(item.id)} onChange={e => {
                         const next = new Set(selectedItems)
@@ -274,7 +383,38 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
                       }} />
                     </td>
                     <td><div style={{fontWeight:500, color: 'var(--text-muted)'}}>{item.deals?.deal_number || 'N/A'}</div></td>
-                    <td><div style={{fontWeight:600}}>{item.imei || item.serial_number || 'N/A'}</div></td>
+                    <td>
+                      {editingImeiId === item.id ? (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <input 
+                            type="text" 
+                            className="form-input" 
+                            style={{ padding: '2px 6px', fontSize: '11px', width: '120px' }} 
+                            value={editImeiValue} 
+                            onChange={e => setEditImeiValue(e.target.value)} 
+                            autoFocus 
+                          />
+                          <button className="btn-primary" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => {
+                            startTransition(async () => {
+                              await updateInventoryItemImei(item.id, editImeiValue)
+                              setEditingImeiId(null)
+                            })
+                          }}>Save</button>
+                          <button className="btn-ghost" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => setEditingImeiId(null)}>Cancel</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{fontWeight:600}}>{item.imei || item.serial_number || 'N/A'}</div>
+                          <button 
+                            className="btn-ghost" 
+                            style={{ padding: 0, fontSize: '11px', color: 'var(--accent-indigo)' }} 
+                            onClick={() => { setEditingImeiId(item.id); setEditImeiValue(item.imei || item.serial_number || ''); }}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <div><strong>{item.model}</strong></div>
                       <div style={{fontSize:'12px', color:'var(--text-muted)'}}>{item.storage} &middot; {item.color} &middot; Grade {item.grade}</div>
@@ -327,6 +467,12 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
                             <button className="btn-ghost" title="Move back to Refurbishing" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'HANDED_TO_REFURBISH')}>↶</button>
                             <button className="btn-primary" disabled={!item.qc_document_url} onClick={()=>handleMoveStage(item.id, 'READY_TO_SELL')}>Ready to Sell</button>
                           </>
+                        )}
+
+                        {(activeStage === 'SOLD' || activeStage === 'ASSIGNED') && item.online_orders && (
+                          <a href={`/dashboard/online-sales/${item.online_orders.platform?.toLowerCase() || 'amazon'}/${item.online_order_id}`} className={`status-badge ${activeStage === 'ASSIGNED' ? 'badge-blue' : 'badge-purple'}`} style={{ textDecoration: 'none', display: 'inline-block' }}>
+                            {activeStage === 'ASSIGNED' ? 'Assigned to' : 'Sold on'} {item.online_orders.order_number}
+                          </a>
                         )}
 
                         {activeStage === 'READY_TO_SELL' && (

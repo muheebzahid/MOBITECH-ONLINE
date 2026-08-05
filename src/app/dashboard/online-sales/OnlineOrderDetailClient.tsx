@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { assignImeiToOrderItem, removeImeiFromOrderItem, updateOnlineOrderStatus, deleteOnlineOrder } from '@/lib/online-sales/actions'
 import { useRole } from '@/components/RoleProvider'
 
@@ -268,7 +269,12 @@ export default function OnlineOrderDetailClient({ order }: Props) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
                         {assignedItems.map((ii: any) => (
                           <div key={ii.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-body)', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', border: '1px solid var(--border)' }}>
-                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ii.imei || ii.serial_number}</span>
+                            <Link 
+                              href={`/dashboard/inventory?q=${ii.imei || ii.serial_number || ''}`}
+                              style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-blue)', textDecoration: 'underline' }}
+                            >
+                              {ii.imei || ii.serial_number}
+                            </Link>
                             <button 
                               style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
                               onClick={() => handleRemoveImei(ii.id)}

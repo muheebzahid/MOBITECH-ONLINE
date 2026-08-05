@@ -235,6 +235,19 @@ export async function updateInvoiceStatus(id: string, newStatus: string) {
   return { success: true }
 }
 
+export async function updateInvoiceNumber(id: string, invoiceNumber: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('invoices')
+    .update({ invoice_number: invoiceNumber })
+    .eq('id', id)
+    
+  if (error) throw error
+  revalidatePath('/dashboard/sales')
+  revalidatePath(`/dashboard/sales/${id}`)
+}
+
+
 // ── Line Items ──────────────────────────────────────────────
 export async function addLineItem(invoiceId: string, formData: FormData) {
   const supabase = await createClient()

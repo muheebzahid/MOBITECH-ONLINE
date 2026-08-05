@@ -62,6 +62,7 @@ function DealsClientInner({ deals, settings }: Props) {
   const [showAmexDetails, setShowAmexDetails] = useState(false)
   const [showTurboDetails, setShowTurboDetails] = useState(false)
   const [showSbDetails, setShowSbDetails] = useState(false)
+  const [showFinancePools, setShowFinancePools] = useState(false)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [showOverdueOnly, setShowOverdueOnly] = useState(false)
@@ -564,8 +565,30 @@ function DealsClientInner({ deals, settings }: Props) {
         </div>
       </div>
 
-      {/* ── Row 2: Amex + Cash Treasury Cards ── */}
-      <div className="deal-summary-row deal-summary-row-2">
+      {/* Finance Pools Toggle */}
+      <div style={{ marginBottom: '24px', marginTop: '16px', display: 'flex', justifyContent: 'flex-start' }}>
+        <button 
+          className="btn-ghost" 
+          onClick={() => setShowFinancePools(!showFinancePools)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px', 
+            borderRadius: '100px', 
+            padding: '10px 20px', 
+            background: showFinancePools ? 'var(--bg-hover)' : 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          }}
+        >
+          <span style={{ fontSize: '16px' }}>💵</span>
+          <span>{showFinancePools ? 'Hide Finance Pools' : 'Show Finance Pools'}</span>
+        </button>
+      </div>
+
+      {/* 💰 Row 2: Amex + Cash Treasury Cards 💰 */}
+      {showFinancePools && (
+        <div className="deal-summary-row deal-summary-row-2">
 
         {/* AMEX CARD */}
         <div className="treasury-card treasury-card-amex">
@@ -736,7 +759,8 @@ function DealsClientInner({ deals, settings }: Props) {
           )}
         </div>
 
-      </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="deal-filters">

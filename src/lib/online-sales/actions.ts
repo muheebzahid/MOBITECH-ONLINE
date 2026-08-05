@@ -62,49 +62,22 @@ export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData:
     return { error: orderErr.message }
   }
 
-  // Insert order items and update inventory_items
-  const items = JSON.parse(itemsJson || '[]') // Array of { id: string, model: string, storage: string, grade: string, color: string, carrier: string, unit_price: number }
+  // Insert order items
+  const items = JSON.parse(itemsJson || '[]') // Array of { model: string, storage: string, grade: string, color: string, carrier: string, quantity: number, unit_price: number }
   if (items.length > 0) {
-    // Group by model/storage/grade to create online_order_items lines
-    const grouped = new Map<string, any>()
-    for (const it of items) {
-      const key = `${it.model}|${it.storage}|${it.grade}|${it.color}|${it.carrier}|${it.unit_price}`
-      if (grouped.has(key)) {
-        grouped.get(key).quantity += 1
-        grouped.get(key).inventory_ids.push(it.id)
-      } else {
-        grouped.set(key, { ...it, quantity: 1, inventory_ids: [it.id] })
-      }
-    }
-
-    for (const group of Array.from(grouped.values())) {
-      const { data: orderItem, error: itemErr } = await supabase
+    for (const item of items) {
+      await supabase
         .from('online_order_items')
         .insert({
           order_id: order.id,
-          model: group.model,
-          storage: group.storage || null,
-          grade: group.grade || null,
-          color: group.color || null,
-          carrier: group.carrier || null,
-          quantity: group.quantity,
-          unit_price: parseFloat(group.unit_price) || 0
+          model: item.model,
+          storage: item.storage || null,
+          grade: item.grade || null,
+          color: item.color || null,
+          carrier: item.carrier || null,
+          quantity: parseInt(item.quantity) || 1,
+          unit_price: parseFloat(item.unit_price) || 0
         })
-        .select()
-        .single()
-      
-      if (!itemErr && orderItem) {
-        // Link inventory_items
-        await supabase
-          .from('inventory_items')
-          .update({
-            status: 'SOLD',
-            location: platform === 'AMAZON' ? 'AMAZON_FBA' : 'REVIBE',
-            online_order_id: order.id,
-            online_order_item_id: orderItem.id
-          })
-          .in('id', group.inventory_ids)
-      }
     }
   }
 
@@ -120,6 +93,13 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
     .eq('id', id)
 
   if (error) return { error: error.message }
+  
+  if (status === 'DELIVERED') {
+    await supabase.from('inventory_items')
+      .update({ status: 'SOLD' })
+      .eq('online_order_id', id)
+  }
+
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${id}`)
   return { success: true }
@@ -187,7 +167,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
       .update({
         online_order_id: orderId,
         online_order_item_id: orderItemId,
-        status: 'SOLD',
+        status: 'ASSIGNED',
         location: targetLocation
       })
       .eq('id', item.id)
@@ -227,7 +207,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
         unit_cost: 0,
         logistics_cost: 0,
         location: targetLocation,
-        status: 'SOLD',
+        status: 'ASSIGNED',
         online_order_id: orderId,
         online_order_item_id: orderItemId
       })
@@ -257,5 +237,149 @@ export async function removeImeiFromOrderItem(orderId: string, itemId: string, p
 
   if (error) return { error: error.message }
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${orderId}`)
+  return { success: true }
+}
+
+export async function bulkCreateOnlineOrders(platform: 'AMAZON' | 'REVIBE', ordersData: any[]) {
+  const supabase = await createClient()
+
+  const ordersMap = new Map<string, any>()
+  
+  for (const row of ordersData) {
+    const orderNum = row['Order Number']
+    if (!orderNum) continue
+    
+    let safeDate = new Date().toISOString()
+    const rawDate = row['Sale Date']
+    if (rawDate) {
+      let parsedDate = new Date()
+      if (typeof rawDate === 'number') {
+        parsedDate = new Date((rawDate - 25569) * 86400 * 1000)
+      } else {
+        parsedDate = new Date(rawDate)
+      }
+      if (!isNaN(parsedDate.getTime())) {
+        safeDate = parsedDate.toISOString()
+      }
+    }
+    
+    if (!ordersMap.has(orderNum)) {
+      ordersMap.set(orderNum, {
+        order_number: String(orderNum).trim(),
+        platform,
+        customer_name: row['Customer Name'] || '',
+        customer_email: row['Customer Email'] || '',
+        sale_date: safeDate,
+        items: []
+      })
+    }
+    
+    const qty = Number(row['Quantity']) || 1
+    const unitPrice = Number(row['Unit Price']) || 0
+    const imeisStr = row['IMEIs'] ? String(row['IMEIs']) : ''
+    const imeisList = imeisStr.split(',').map(i => i.trim()).filter(Boolean)
+    
+    ordersMap.get(orderNum).items.push({
+      model: row['Model'] || 'Unknown Model',
+      storage: row['Storage'] || '',
+      grade: row['Grade'] || '',
+      color: row['Color'] || '',
+      carrier: row['Carrier'] || '',
+      quantity: qty,
+      unit_price: unitPrice,
+      imeis: imeisList
+    })
+  }
+
+  const groupedOrders = Array.from(ordersMap.values())
+
+  for (const gOrder of groupedOrders) {
+    const { data: existing } = await supabase.from('online_orders').select('id').eq('order_number', gOrder.order_number).eq('platform', platform).single()
+    
+    let orderId = existing?.id
+    
+    if (!orderId) {
+      const totalAmount = gOrder.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unit_price), 0)
+      const { data: newOrder, error: orderErr } = await supabase.from('online_orders').insert({
+        order_number: gOrder.order_number,
+        platform,
+        customer_name: gOrder.customer_name,
+        customer_email: gOrder.customer_email,
+        sale_date: gOrder.sale_date,
+        total_amount: totalAmount,
+        status: 'PENDING'
+      }).select('id').single()
+      
+      if (orderErr) continue
+      orderId = newOrder.id
+    }
+    
+    for (const item of gOrder.items) {
+      const { data: newItem, error: itemErr } = await supabase.from('online_order_items').insert({
+        order_id: orderId,
+        model: item.model,
+        storage: item.storage,
+        grade: item.grade,
+        color: item.color,
+        carrier: item.carrier,
+        quantity: item.quantity,
+        unit_price: item.unit_price
+      }).select('id').single()
+      
+      if (!itemErr && newItem && item.imeis.length > 0) {
+        const imeisToLink = item.imeis.slice(0, item.quantity)
+        for (const imei of imeisToLink) {
+          await supabase.from('inventory_items')
+            .update({
+              online_order_id: orderId,
+              online_order_item_id: newItem.id,
+              status: 'ASSIGNED'
+            })
+            .eq('imei', imei)
+            .is('online_order_id', null)
+        }
+      }
+    }
+  }
+
+  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+  return { success: true }
+}
+
+export async function bulkFulfillAndShipOrders(platform: 'AMAZON' | 'REVIBE', assignments: { orderId: string, orderItemId: string, imeis: string[] }[]) {
+  const supabase = await createClient()
+  
+  const orderIdsToShip = new Set<string>()
+
+  for (const a of assignments) {
+    orderIdsToShip.add(a.orderId)
+    if (a.imeis.length === 0) continue
+
+    for (const imei of a.imeis) {
+      if (!imei.trim()) continue
+      
+      const { error } = await supabase.from('inventory_items')
+        .update({
+          online_order_id: a.orderId,
+          online_order_item_id: a.orderItemId,
+          status: 'ASSIGNED'
+        })
+        .eq('imei', imei.trim())
+        .is('online_order_id', null)
+        
+      if (error) {
+        console.error('Error assigning IMEI:', imei, error)
+      }
+    }
+  }
+
+  for (const orderId of Array.from(orderIdsToShip)) {
+    await supabase.from('online_orders')
+      .update({ status: 'SHIPPED' })
+      .eq('id', orderId)
+  }
+
+  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+  revalidatePath('/dashboard/inventory')
   return { success: true }
 }

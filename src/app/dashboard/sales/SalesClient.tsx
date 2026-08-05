@@ -30,6 +30,7 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
   const [showNew, setShowNew] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   
   const [form, setForm] = useState({
     customer_name: '', customer_email: '', customer_address: '', customer_phone: '',
@@ -86,6 +87,35 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
 
     return false
   })
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc'
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const sortedInvoices = [...filteredInvoices].sort((a, b) => {
+    if (!sortConfig) return 0
+    const { key, direction } = sortConfig
+    let valA = a[key]
+    let valB = b[key]
+    
+    if (key === 'source_deals') {
+      valA = a.invoice_line_items?.length || 0
+      valB = b.invoice_line_items?.length || 0
+    }
+    
+    if (valA < valB) return direction === 'asc' ? -1 : 1
+    if (valA > valB) return direction === 'asc' ? 1 : -1
+    return 0
+  })
+
+  const SortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (!sortConfig || sortConfig.key !== columnKey) return <span style={{ opacity: 0.3, marginLeft: '4px' }}>↕</span>
+    return <span style={{ marginLeft: '4px', color: 'var(--accent-indigo)' }}>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+  }
 
   return (
     <div className="page-root">
@@ -216,21 +246,21 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           <div className="deals-table-wrap" style={{ marginTop: '0' }}>
             <table className="deals-table">
               <thead>
-                <tr>
-                  <th>Invoice #</th>
-                  <th>Status</th>
-                  <th>Customer</th>
-                  <th>Source Deal(s)</th>
-                  <th>Payment Date</th>
-                  <th style={{textAlign:'right'}}>Total</th>
-                  <th style={{textAlign:'right'}}>Balance Due</th>
+                <tr style={{ userSelect: 'none' }}>
+                  <th onClick={() => requestSort('invoice_number')} style={{ cursor: 'pointer' }}>Invoice # <SortIcon columnKey="invoice_number" /></th>
+                  <th onClick={() => requestSort('status')} style={{ cursor: 'pointer' }}>Status <SortIcon columnKey="status" /></th>
+                  <th onClick={() => requestSort('customer_name')} style={{ cursor: 'pointer' }}>Customer <SortIcon columnKey="customer_name" /></th>
+                  <th onClick={() => requestSort('source_deals')} style={{ cursor: 'pointer' }}>Source Deal(s) <SortIcon columnKey="source_deals" /></th>
+                  <th onClick={() => requestSort('issue_date')} style={{ cursor: 'pointer' }}>Payment Date <SortIcon columnKey="issue_date" /></th>
+                  <th onClick={() => requestSort('total_amount')} style={{ cursor: 'pointer', textAlign:'right' }}>Total <SortIcon columnKey="total_amount" /></th>
+                  <th onClick={() => requestSort('balance_due')} style={{ cursor: 'pointer', textAlign:'right' }}>Balance Due <SortIcon columnKey="balance_due" /></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredInvoices.length === 0 && (
+                {sortedInvoices.length === 0 && (
                   <tr><td colSpan={8} style={{textAlign:'center', padding:'30px', color:'var(--text-muted)'}}>No invoices found matching your query.</td></tr>
                 )}
-                {filteredInvoices.map(inv => {
+                {sortedInvoices.map(inv => {
                   const st = INVOICE_STATUSES[inv.status as InvoiceStatus]
                   return (
                     <tr key={inv.id} className="deal-row">

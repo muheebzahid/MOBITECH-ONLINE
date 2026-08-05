@@ -11,7 +11,8 @@ export async function getAllInventory() {
     .select(`
       *,
       deals(deal_number, supplier, model),
-      invoices(invoice_number)
+      invoices(invoice_number),
+      online_orders(order_number, platform)
     `)
     .order('created_at', { ascending: false })
   
@@ -151,6 +152,42 @@ export async function deleteInventoryItem(itemId: string) {
   if (error) {
     console.error('deleteInventoryItem error:', error)
     return { error: error.message }
+  }
+
+  revalidatePath('/dashboard/inventory')
+  return { success: true }
+}
+
+export async function updateInventoryItemImei(itemId: string, imei: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('inventory_items')
+    .update({ imei: imei ? imei.trim() : null })
+    .eq('id', itemId)
+  if (error) return { error: error.message }
+  revalidatePath('/dashboard/inventory')
+  return { success: true }
+}
+
+export async function bulkUpdateInventoryItems(updates: { id: string, imei?: string, serial_number?: string, repair_cost?: number }[]) {
+  const supabase = await createClient()
+  
+  for (const update of updates) {
+    if (!update.id) continue
+    
+    const payload: any = {}
+    if (update.imei !== undefined) payload.imei = update.imei ? String(update.imei).trim() : null
+    if (update.serial_number !== undefined) payload.serial_number = update.serial_number ? String(update.serial_number).trim() : null
+    if (update.repair_cost !== undefined && !isNaN(Number(update.repair_cost))) {
+      payload.repair_cost = Number(update.repair_cost)
+    }
+    
+    if (Object.keys(payload).length > 0) {
+      await supabase
+        .from('inventory_items')
+        .update(payload)
+        .eq('id', update.id)
+    }
   }
 
   revalidatePath('/dashboard/inventory')

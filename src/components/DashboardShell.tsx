@@ -39,6 +39,7 @@ export default function DashboardShell({ user, children }: Props) {
     { id: 'online-sales', label: 'Online Sales', icon: '🛒', href: '/dashboard/online-sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
     { id: 'clients', label: 'Clients', icon: '👤', href: '/dashboard/clients', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES'] },
     { id: 'accounting', label: 'Accounting', icon: '📊', href: '/dashboard/accounting', roles: ['SUPER_ADMIN', 'FINANCE'] },
+    { id: 'analytics', label: 'Analytics', icon: '📈', href: '/dashboard/analytics', roles: ['SUPER_ADMIN', 'FINANCE'] },
     { id: 'partners', label: 'Partners', icon: '🤝', href: '/dashboard/partners', roles: ['SUPER_ADMIN', 'FINANCE'] },
     { id: 'finance', label: 'Treasury', icon: '🏦', href: '/dashboard/finance', roles: ['SUPER_ADMIN', 'FINANCE'] },
     { id: 'admin', label: 'Admin', icon: '⚙️', href: '/dashboard/admin', roles: ['SUPER_ADMIN'] }

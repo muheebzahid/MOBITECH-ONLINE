@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { INVOICE_STATUSES, PAYMENT_METHODS, type InvoiceStatus } from '@/lib/sales/constants'
-import { addLineItem, removeLineItem, recordPayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus, updateInvoiceBilledTo } from '@/lib/sales/actions'
+import { addLineItem, removeLineItem, recordPayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus, updateInvoiceBilledTo, updateInvoiceNumber } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
 
 function fmt(n: number) {
@@ -41,6 +41,9 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   const [editDealId, setEditDealId] = useState<string>('')
   const [isEditingStatus, setIsEditingStatus] = useState(false)
   const [editStatusValue, setEditStatusValue] = useState<string>('')
+
+  const [isEditingInvoiceNumber, setIsEditingInvoiceNumber] = useState(false)
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState(invoice.invoice_number || '')
 
   const [isEditingBilledTo, setIsEditingBilledTo] = useState(false)
   const [editCustomerName, setEditCustomerName] = useState(invoice.customer_name || '')
@@ -249,8 +252,116 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
     })
   }
 
+  const handleUpdateInvoiceNumber = () => {
+    if (!editInvoiceNumber.trim()) {
+      setError('Invoice number cannot be empty')
+      return
+    }
+    setError('')
+    startTransition(async () => {
+      try {
+        await updateInvoiceNumber(invoice.id, editInvoiceNumber)
+        setIsEditingInvoiceNumber(false)
+      } catch (err: any) {
+        setError(err.message || 'Failed to update invoice number')
+      }
+    })
+  }
+
   return (
     <div className="page-root">
+      <style>{`
+        @media print {
+          @page { margin: 0; size: auto; }
+          
+          /* Override all layout wrappers to be white and auto-height */
+          html, body, #__next, .erp-root, .erp-main, .page-root {
+            background-color: white !important;
+            background: white !important;
+            color: black !important;
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          
+          /* Hide Sidebar and Top Navigation */
+          .sidebar, .erp-header, .deal-detail-header, .mobile-sidebar-toggle { 
+            display: none !important; 
+          }
+          
+          /* Restructure the layout grids */
+          .shipment-body-grid { 
+            display: block !important; 
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+          }
+          .shipment-body-grid > div:last-child { 
+            display: none !important; 
+          } /* Hide right sidebar (Payment history) */
+          
+          /* Invoice Paper Styling */
+          .invoice-paper { 
+            border: none !important; 
+            padding: 15mm !important; /* Re-apply padding since @page margin is 0 */
+            box-shadow: none !important; 
+            background: white !important; 
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* Hide interactive elements */
+          .no-print { display: none !important; }
+          
+          /* Table Styling - Option 1: Modern SaaS */
+          .deals-table-wrap {
+             border: 1px solid #e2e8f0 !important;
+             border-radius: 12px !important;
+             overflow: hidden !important;
+             background: transparent !important;
+          }
+          .deals-table { border: none !important; width: 100% !important; border-collapse: collapse !important; }
+          .deals-table th { 
+            background-color: #f8fafc !important; 
+            color: #475569 !important; 
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            padding: 16px 20px !important;
+            border-bottom: 1px solid #e2e8f0 !important; 
+            border-top: none !important;
+            border-left: none !important;
+            border-right: none !important;
+          }
+          .deals-table td { 
+            padding: 16px 20px !important;
+            border-bottom: 1px solid #f1f5f9 !important; 
+            border-top: none !important;
+            border-left: none !important;
+            border-right: none !important;
+            background-color: white !important; 
+            vertical-align: top !important;
+          }
+          .deals-table tr:last-child td { border-bottom: none !important; }
+          
+          /* Ensure text colors are dark for printing */
+          .invoice-paper *, .invoice-paper div, .invoice-paper span, .invoice-paper td, .invoice-paper strong { 
+            color: #0f172a !important; 
+          }
+          .text-muted, .invoice-paper .text-muted { color: #475569 !important; }
+          .invoice-brand-name { color: #2563eb !important; }
+          
+          /* Force color adjust */
+          * {
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
       
       {/* Header */}
       <div className="deal-detail-header">
@@ -288,6 +399,16 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
           {invoice.status === 'DRAFT' && (
             <button className="btn-primary" onClick={handleIssue} disabled={isPending}>Issue Invoice</button>
           )}
+          {['ISSUED', 'PARTIAL', 'PAID'].includes(invoice.status) && (
+            <button className="btn-ghost" onClick={() => {
+              const oldTitle = document.title;
+              const cleanCustomer = (invoice.customer_name || 'Unknown').replace(/[^a-zA-Z0-9 ]/g, '').trim();
+              const dateStr = invoice.issue_date ? fmtD(invoice.issue_date) : '';
+              document.title = `${invoice.invoice_number} - ${cleanCustomer} - ${dateStr}`;
+              window.print();
+              setTimeout(() => { document.title = oldTitle; }, 1000);
+            }} style={{ border: '1px solid var(--border)' }}>Download PDF</button>
+          )}
           {['ISSUED', 'PARTIAL'].includes(invoice.status) && (
             <button className="btn-primary" onClick={() => {
               setPayForm(f => ({ ...f, amount: invoice.balance_due.toString() }))
@@ -304,8 +425,23 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
           
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'32px' }}>
             <div>
+              <div className="invoice-brand-name" style={{ fontSize:'15px', fontWeight:800, color:'#2563eb', marginBottom:'4px' }}>TELE SIM FZCO</div>
               <div style={{ fontSize:'24px', fontWeight:800, letterSpacing:'-0.5px' }}>INVOICE</div>
-              <div style={{ fontSize:'13px', color:'var(--text-muted)' }}>{invoice.invoice_number}</div>
+              {isEditingInvoiceNumber ? (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <input type="text" className="form-input" style={{ fontSize: '13px', padding: '4px 8px', width: '150px' }} value={editInvoiceNumber} onChange={e => setEditInvoiceNumber(e.target.value)} />
+                  <button className="btn-primary" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={handleUpdateInvoiceNumber} disabled={isPending}>Save</button>
+                  <button className="btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
+                    setIsEditingInvoiceNumber(false);
+                    setEditInvoiceNumber(invoice.invoice_number);
+                  }}>Cancel</button>
+                </div>
+              ) : (
+                <div style={{ fontSize:'13px', color:'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {invoice.invoice_number}
+                  <button className="btn-ghost no-print" style={{ padding: 0, fontSize: '11px', color: 'var(--accent-indigo)' }} onClick={() => setIsEditingInvoiceNumber(true)}>Edit</button>
+                </div>
+              )}
             </div>
             <div style={{ textAlign:'right', fontSize:'13px' }}>
               <div style={{ color:'var(--text-muted)' }}>Issue Date</div>
@@ -320,7 +456,7 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
               <span style={{ color:'var(--text-muted)', fontWeight: 600 }}>Billed To:</span>
               {!isEditingBilledTo && (
                 <button 
-                  className="btn-ghost" 
+                  className="btn-ghost no-print" 
                   style={{ padding: 0, fontSize: '11px', color: 'var(--accent-indigo)' }}
                   onClick={() => setIsEditingBilledTo(true)}
                 >
@@ -424,10 +560,10 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                           <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => setEditingLineItem(null)}>Cancel</button>
                         </div>
                       ) : (
-                        <div style={{ fontSize:'11px', color: item.deals ? '#22c55e' : '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="no-print" style={{ fontSize:'11px', color: item.deals ? '#22c55e' : '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {item.deals ? `Deal Ref: ${item.deals.deal_number} (${item.deals.model})` : 'No deal linked'}
                           {role === 'SUPER_ADMIN' && (
-                            <button className="btn-ghost" style={{ color: 'var(--accent-indigo)', padding: 0, fontSize: '11px' }} onClick={() => { setEditingLineItem(item.id); setEditDealId(item.deal_item_id ? `${item.deal_id}:${item.deal_item_id}` : (item.deal_id || '')); }}>Edit Source</button>
+                            <button className="btn-ghost no-print" style={{ color: 'var(--accent-indigo)', padding: 0, fontSize: '11px' }} onClick={() => { setEditingLineItem(item.id); setEditDealId(item.deal_item_id ? `${item.deal_id}:${item.deal_item_id}` : (item.deal_id || '')); }}>Edit Source</button>
                           )}
                         </div>
                       )}
@@ -436,12 +572,12 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                     <td style={{textAlign:'right'}}>{fmt(item.unit_price)}</td>
                     <td style={{textAlign:'right', paddingRight:0, fontWeight:600}}>{fmt(item.total_price)}</td>
                     {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && (
-                      <td style={{width:'30px'}}><button className="btn-ghost" style={{color:'#f87171', padding:'4px 8px'}} onClick={()=>handleRemoveLineItem(item.id)}>✕</button></td>
+                      <td style={{width:'30px'}} className="no-print"><button className="btn-ghost" style={{color:'#f87171', padding:'4px 8px'}} onClick={()=>handleRemoveLineItem(item.id)}>✕</button></td>
                     )}
                   </tr>
                 ))}
                 {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && (
-                  <tr>
+                  <tr className="no-print">
                     <td colSpan={5} style={{paddingLeft:0}}>
                       <button className="btn-ghost" style={{fontSize:'12px', padding:'6px 12px', color:'var(--accent-indigo)'}} onClick={()=>setShowLineItem(true)}>+ Add Line Item</button>
                     </td>
@@ -478,7 +614,7 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                 <span>Paid</span>
                 <strong>{fmt(invoice.amount_paid)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 0', fontSize:'18px', backgroundColor:'var(--bg-elevated)', borderRadius:'var(--radius-sm)', marginTop:'8px', paddingLeft:'8px', paddingRight:'8px' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 0', fontSize:'18px', marginTop:'8px' }}>
                 <span><strong>Balance Due</strong></span>
                 <strong style={{ color: invoice.balance_due > 0 ? '#fb923c' : 'inherit' }}>{fmt(invoice.balance_due)}</strong>
               </div>
@@ -491,7 +627,7 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
             </div>
           )}
 
-          <div style={{ marginTop: '32px', padding: '16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+          <div className="no-print" style={{ marginTop: '32px', padding: '16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
             <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>Attachment</h3>
             {invoice.pdf_url ? (
                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
