@@ -88,3 +88,29 @@ export async function addMember(formData: FormData) {
   revalidatePath('/dashboard/admin')
   return { success: true }
 }
+
+export async function deleteMember(authUserId: string) {
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN') return { error: 'Unauthorized' }
+
+  const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Double check it's not the primary admin
+  const { data: userRole } = await supabaseAdmin.from('user_roles').select('email').eq('user_id', authUserId).single()
+  if (userRole?.email === 'muheebzahid@gmail.com') {
+    return { error: 'Cannot delete primary admin account' }
+  }
+
+  // 1. Delete from auth.users (this should cascade if configured, but we manually delete user_roles to be safe)
+  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId)
+  if (authError) return { error: authError.message }
+
+  // 2. Delete from user_roles
+  await supabaseAdmin.from('user_roles').delete().eq('user_id', authUserId)
+
+  revalidatePath('/dashboard/admin')
+  return { success: true }
+}

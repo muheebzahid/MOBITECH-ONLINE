@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { updateUserRole, addMember } from '@/lib/admin/actions'
+import { updateUserRole, addMember, deleteMember } from '@/lib/admin/actions'
 import { backupToDesktop } from '@/lib/backup/actions'
 
 
@@ -38,6 +38,17 @@ export default function AdminClient({ users }: Props) {
   const handleRoleChange = async (userId: string, newRole: string) => {
     startTransition(async () => {
       await updateUserRole(userId, newRole as any)
+    })
+  }
+
+  const handleDeleteMember = async (authUserId: string) => {
+    if (!confirm('Are you sure you want to permanently delete this account?')) return
+    
+    startTransition(async () => {
+      const res = await deleteMember(authUserId)
+      if (res.error) {
+        alert(res.error)
+      }
     })
   }
 
@@ -129,7 +140,7 @@ export default function AdminClient({ users }: Props) {
                     Joined {fmtDate(u.created_at)}
                   </div>
                 </div>
-                <div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <select 
                     className="form-input" 
                     style={{ width: 'auto', padding: '6px 12px', height: 'auto' }}
@@ -142,6 +153,34 @@ export default function AdminClient({ users }: Props) {
                     <option value="LOGISTICS">Logistics</option>
                     <option value="FINANCE">Finance</option>
                   </select>
+                  {u.email !== 'muheebzahid@gmail.com' && (
+                    <button 
+                      onClick={() => handleDeleteMember(u.user_id)}
+                      disabled={isPending}
+                      className="btn-danger"
+                      style={{ 
+                        padding: '6px 12px', 
+                        background: 'transparent',
+                        border: '1px solid var(--accent-red)',
+                        color: 'var(--accent-red)',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        opacity: isPending ? 0.5 : 1
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'var(--accent-red)'
+                        e.currentTarget.style.color = '#fff'
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = 'var(--accent-red)'
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
