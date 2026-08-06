@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext } from 'react'
 
-type Role = 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE'
+type Role = 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY'
 
 const RoleContext = createContext<Role>('SALES')
 
