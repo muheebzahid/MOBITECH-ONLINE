@@ -98,18 +98,31 @@ export async function deleteMember(authUserId: string) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  const supabase = await createClient()
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (currentUser?.id === authUserId) {
+    return { error: 'You cannot remove yourself' }
+  }
+
   // Double check it's not the primary admin
   const { data: userRole } = await supabaseAdmin.from('user_roles').select('email').eq('user_id', authUserId).single()
   if (userRole?.email === 'muheebzahid@gmail.com') {
-    return { error: 'Cannot delete primary admin account' }
+    return { error: 'Cannot remove primary admin account' }
   }
 
-  // 1. Delete from auth.users (this should cascade if configured, but we manually delete user_roles to be safe)
-  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId)
-  if (authError) return { error: authError.message }
+  // 1. Ban the user in Auth to strictly prevent any login without destroying business records
+  const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(authUserId, {
+    ban_duration: '876000h' // 100 years
+  })
+  if (banError) return { error: banError.message }
 
-  // 2. Delete from user_roles
-  await supabaseAdmin.from('user_roles').delete().eq('user_id', authUserId)
+  // 2. Safely delete from user_roles to remove them from the ERP dashboard & role assignments
+  const { error: dbError } = await supabaseAdmin.from('user_roles').delete().eq('user_id', authUserId)
+  if (dbError) {
+    // If it fails due to foreign key constraints (they created records), we just leave them banned
+    // and maybe update their role to a non-active role if possible, but they are already banned from logging in.
+    console.error('Could not delete from user_roles (likely FK constraint). User is banned instead.', dbError)
+  }
 
   revalidatePath('/dashboard/admin')
   return { success: true }

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { updateUserRole, addMember, deleteMember } from '@/lib/admin/actions'
-import { backupToDesktop } from '@/lib/backup/actions'
+import { generateOnlineBackup } from '@/lib/backup/actions'
 
 
 interface Props {
@@ -20,11 +20,21 @@ export default function AdminClient({ users }: Props) {
 
   const handleBackup = () => {
     startBackupTransition(async () => {
-      const res = await backupToDesktop()
+      const res = await generateOnlineBackup()
       if (res.error) {
         alert('Backup failed: ' + res.error)
-      } else if (res.success && res.path && res.folder) {
-        alert(`💾 Backup successfully created on your Desktop!\n\n📁 Folder: ${res.folder}\n📄 File: ${res.path.split(/[\\\\/]/).pop()}`)
+      } else if (res.success && res.data && res.filename) {
+        // Trigger browser download
+        const blob = new Blob([res.data], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = res.filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        alert('✅ Online ERP Backup downloaded successfully!')
       }
     })
   }
@@ -35,19 +45,24 @@ export default function AdminClient({ users }: Props) {
   const [addForm, setAddForm] = useState({ email: '', password: '', role: 'SALES' })
   const [addError, setAddError] = useState('')
   
+  // Remove Member State
+  const [memberToRemove, setMemberToRemove] = useState<any>(null)
+
   const handleRoleChange = async (userId: string, newRole: string) => {
     startTransition(async () => {
       await updateUserRole(userId, newRole as any)
     })
   }
 
-  const handleDeleteMember = async (authUserId: string) => {
-    if (!confirm('Are you sure you want to permanently delete this account?')) return
-    
+  const confirmDeleteMember = async () => {
+    if (!memberToRemove) return
     startTransition(async () => {
-      const res = await deleteMember(authUserId)
+      const res = await deleteMember(memberToRemove.user_id)
       if (res.error) {
         alert(res.error)
+      } else {
+        alert('✅ Member removed successfully.')
+        setMemberToRemove(null)
       }
     })
   }
@@ -155,7 +170,7 @@ export default function AdminClient({ users }: Props) {
                   </select>
                   {u.email !== 'muheebzahid@gmail.com' && (
                     <button 
-                      onClick={() => handleDeleteMember(u.user_id)}
+                      onClick={() => setMemberToRemove(u)}
                       disabled={isPending}
                       className="btn-danger"
                       style={{ 
@@ -190,13 +205,21 @@ export default function AdminClient({ users }: Props) {
         {/* Database Backup Panel */}
         <div className="panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 'fit-content' }}>
           <div>
-            <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Database Management & Backups</h2>
+            <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Online Database Backups</h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '13px', lineHeight: '1.6', marginBottom: '24px' }}>
-              Create a local backup of your entire ERP database. This fetches all tables (deals, inventory, shipments, invoices, payments, partners, expenses) and saves them formatted as JSON directly on your computer's Desktop.
+              Create a secure backup of your entire Online ERP database. This fetches all tables (deals, inventory, shipments, invoices, payments, partners, expenses) directly from the-workflows.com and downloads it to your browser.
             </p>
             <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 500, marginBottom: '8px', color: 'var(--text-normal)' }}>📁 Backup Location:</h3>
-              <code style={{ fontSize: '12px', color: 'var(--accent-teal)', wordBreak: 'break-all' }}>C:\Users\surface\Desktop\Mobitech_ERP_Backups\</code>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px', fontSize: '13px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Backup Type:</span>
+                <span style={{ fontWeight: 500, color: 'var(--text-normal)' }}>Online ERP Backup</span>
+                
+                <span style={{ color: 'var(--text-muted)' }}>Backup Source:</span>
+                <span style={{ fontWeight: 500, color: 'var(--text-normal)' }}>the-workflows.com</span>
+                
+                <span style={{ color: 'var(--text-muted)' }}>Destination:</span>
+                <span style={{ fontWeight: 500, color: 'var(--text-normal)' }}>Browser Download</span>
+              </div>
             </div>
           </div>
           
@@ -221,12 +244,58 @@ export default function AdminClient({ users }: Props) {
               opacity: isBackupPending ? 0.7 : 1
             }}
           >
-            <span>💾</span>
-            {isBackupPending ? 'Creating Backup...' : 'Backup Database to Desktop'}
+            <span>☁️</span>
+            {isBackupPending ? 'Generating Online Backup...' : 'Download Online Backup'}
           </button>
         </div>
 
       </div>
+
+      {/* Remove Member Modal */}
+      {memberToRemove && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999
+        }}>
+          <div style={{
+            background: 'var(--bg-panel)', padding: '24px', borderRadius: '8px', 
+            border: '1px solid var(--border)', width: '100%', maxWidth: '400px'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: 'var(--accent-red)' }}>Remove Team Member</h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+              Are you sure you want to remove this team member? Their access will be revoked but business records will be preserved.
+            </p>
+            
+            <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '6px', marginBottom: '24px', fontSize: '13px' }}>
+              <div style={{ marginBottom: '8px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Email:</span> <span style={{ fontWeight: 500 }}>{memberToRemove.email}</span>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>Current Role:</span> <span style={{ fontWeight: 500 }}>{memberToRemove.role}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button 
+                onClick={() => setMemberToRemove(null)}
+                className="btn-secondary"
+                disabled={isPending}
+                style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-normal)', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDeleteMember}
+                className="btn-danger"
+                disabled={isPending}
+                style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent-red)', color: '#fff', cursor: 'pointer' }}
+              >
+                {isPending ? 'Removing...' : 'Remove Member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
