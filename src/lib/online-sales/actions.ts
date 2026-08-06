@@ -1,3 +1,4 @@
+import { requireWriteAccess } from '@/lib/admin/actions'
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -34,6 +35,10 @@ export async function getOnlineOrderById(id: string) {
 }
 
 export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData: FormData, itemsJson: string) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   const orderNumber = formData.get('order_number') as string
   const customerName = formData.get('customer_name') as string
@@ -86,6 +91,10 @@ export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData:
 }
 
 export async function updateOnlineOrderStatus(id: string, platform: string, status: string) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   const { error } = await supabase
     .from('online_orders')
@@ -106,6 +115,10 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
 }
 
 export async function deleteOnlineOrder(id: string, platform: string) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   
   // Find assigned inventory items first
@@ -138,6 +151,10 @@ export async function deleteOnlineOrder(id: string, platform: string) {
 }
 
 export async function assignImeiToOrderItem(orderId: string, orderItemId: string, imeiText: string, platform: 'AMAZON' | 'REVIBE') {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   const trimmed = imeiText.trim()
   if (!trimmed) return { error: 'IMEI/Serial is required' }
@@ -223,6 +240,10 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
 }
 
 export async function removeImeiFromOrderItem(orderId: string, itemId: string, platform: 'AMAZON' | 'REVIBE') {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
 
   const { error } = await supabase
@@ -241,6 +262,10 @@ export async function removeImeiFromOrderItem(orderId: string, itemId: string, p
 }
 
 export async function bulkCreateOnlineOrders(platform: 'AMAZON' | 'REVIBE', ordersData: any[]) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
 
   const ordersMap = new Map<string, any>()
@@ -347,6 +372,10 @@ export async function bulkCreateOnlineOrders(platform: 'AMAZON' | 'REVIBE', orde
 }
 
 export async function bulkFulfillAndShipOrders(platform: 'AMAZON' | 'REVIBE', assignments: { orderId: string, orderItemId: string, imeis: string[] }[]) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   
   const orderIdsToShip = new Set<string>()

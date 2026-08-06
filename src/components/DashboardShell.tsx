@@ -48,7 +48,7 @@ export default function DashboardShell({ user, children }: Props) {
   const navItems = allNavItems.filter(item => item.roles.includes(role))
 
   return (
-    <div className="erp-root">
+    <div className="erp-root" data-role={role}>
       {/* Sidebar */}
       <aside 
         className={`sidebar ${isExpanded ? 'sidebar-open' : 'sidebar-collapsed'}`}

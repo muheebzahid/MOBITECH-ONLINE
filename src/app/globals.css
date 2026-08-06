@@ -1159,3 +1159,32 @@ input[type="checkbox"]::before {
 input[type="checkbox"]:checked::before {
   transform: scale(1);
 }
+  
+/* ============================== */
+/* VIEW ONLY MODE RESTRICTIONS */
+/* ============================== */
+.erp-root[data-role="VIEW_ONLY"] button.btn-primary,
+.erp-root[data-role="VIEW_ONLY"] button.btn-edit,
+.erp-root[data-role="VIEW_ONLY"] button.btn-advance,
+.erp-root[data-role="VIEW_ONLY"] button.btn-danger,
+.erp-root[data-role="VIEW_ONLY"] button.btn-ghost:not(.download-btn),
+.erp-root[data-role="VIEW_ONLY"] .delete-btn,
+.erp-root[data-role="VIEW_ONLY"] .remove-btn,
+.erp-root[data-role="VIEW_ONLY"] input[type="file"],
+.erp-root[data-role="VIEW_ONLY"] .upload-btn,
+.erp-root[data-role="VIEW_ONLY"] form button[type="submit"] {
+  display: none !important;
+}
+
+.erp-root[data-role="VIEW_ONLY"] input:not([type="search"]),
+.erp-root[data-role="VIEW_ONLY"] select,
+.erp-root[data-role="VIEW_ONLY"] textarea {
+  pointer-events: none !important;
+  background-color: var(--bg-surface) !important;
+  opacity: 0.8 !important;
+}
+
+.erp-root[data-role="VIEW_ONLY"] input[type="search"] {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}

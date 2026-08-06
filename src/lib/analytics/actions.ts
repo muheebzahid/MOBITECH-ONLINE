@@ -1,3 +1,4 @@
+import { requireWriteAccess } from '@/lib/admin/actions'
 'use server'
 
 import { createClient } from '@/lib/supabase/server'

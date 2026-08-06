@@ -1,3 +1,4 @@
+import { requireWriteAccess } from '@/lib/admin/actions'
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -7,6 +8,10 @@ import { revalidatePath } from 'next/cache'
 const USD_TO_AED = 3.674
 
 export async function logExpense(category: string, description: string, amount: number, referenceLink?: string, expenseDate?: string) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -29,6 +34,10 @@ export async function logExpense(category: string, description: string, amount: 
 }
 
 export async function deleteExpense(id: string) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   const { error } = await supabase.from('operating_expenses').delete().eq('id', id)
   if (error) throw error
@@ -36,6 +45,10 @@ export async function deleteExpense(id: string) {
 }
 
 export async function editExpense(id: string, data: { amount?: number, category?: string, description?: string, expense_date?: string, reference_link?: string }) {
+  await requireWriteAccess();
+
+  await requireWriteAccess();
+
   const supabase = await createClient()
   const { error } = await supabase.from('operating_expenses').update(data).eq('id', id)
   if (error) throw error
