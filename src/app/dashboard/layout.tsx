@@ -15,15 +15,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const role = await getUserRole()
-  if (!role) redirect('/login')
-  
-  if (role !== 'SUPER_ADMIN') {
+  if (role === 'DENIED' || !role) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100">
         <div className="p-8 bg-white rounded shadow-md text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
-          <p className="text-gray-700">Online ERP is currently in testing mode.</p>
-          <p className="text-gray-700">Only authorized SUPER_ADMIN accounts are allowed.</p>
+          <p className="text-gray-700">Your account does not have an active role assigned.</p>
+          <p className="text-gray-700">Please contact your administrator.</p>
           <form action="/auth/signout" method="post" className="mt-6">
             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Sign Out</button>
           </form>

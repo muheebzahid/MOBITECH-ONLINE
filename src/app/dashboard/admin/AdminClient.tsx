@@ -137,6 +137,7 @@ export default function AdminClient({ users }: Props) {
                   <option value="LOGISTICS">Logistics</option>
                   <option value="FINANCE">Finance</option>
                   <option value="SUPER_ADMIN">Super Admin</option>
+                  <option value="VIEW_ONLY">View Only</option>
                 </select>
                 <button type="submit" className="btn-primary" disabled={isPending}>
                   {isPending ? 'Saving...' : 'Create Account'}
@@ -167,6 +168,7 @@ export default function AdminClient({ users }: Props) {
                     <option value="SALES">Sales</option>
                     <option value="LOGISTICS">Logistics</option>
                     <option value="FINANCE">Finance</option>
+                    <option value="VIEW_ONLY">View Only</option>
                   </select>
                   {u.email !== 'muheebzahid@gmail.com' && (
                     <button 

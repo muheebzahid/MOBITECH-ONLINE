@@ -16,8 +16,14 @@ export async function getUserRole() {
     return 'SUPER_ADMIN'
   }
 
-  // Phase 1 testing: Deny all other users regardless of DB role
-  return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'DENIED'
+  // Fetch role from DB
+  const { data: userRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single()
+  
+  if (userRole) {
+    return userRole.role as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
+  }
+
+  return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
 }
 
 export async function getAllUsers() {
@@ -35,7 +41,7 @@ export async function getAllUsers() {
   return data
 }
 
-export async function updateUserRole(id: string, newRole: 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE') {
+export async function updateUserRole(id: string, newRole: 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY') {
   const supabase = await createClient()
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
