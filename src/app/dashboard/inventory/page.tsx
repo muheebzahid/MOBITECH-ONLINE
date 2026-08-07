@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic'
 export default async function InventoryPage() {
   const role = await getUserRole()
   if (role === 'LOGISTICS') redirect('/dashboard')
-  const inventory = await getAllInventory()
-  const deals = await getDeals()
+  const [inventory, deals] = await Promise.all([
+    getAllInventory(),
+    getDeals()
+  ])
   return <InventoryClient inventory={inventory} activeDeals={deals} />
 }

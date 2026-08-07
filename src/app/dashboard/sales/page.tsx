@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic'
 export default async function SalesPage() {
   const role = await getUserRole()
   if (role === 'LOGISTICS') redirect('/dashboard')
-  const invoices = await getInvoices()
-  const pendingInvoices = await getPendingInvoices()
-  const clients = await getClients()
+  const [invoices, pendingInvoices, clients] = await Promise.all([
+    getInvoices(),
+    getPendingInvoices(),
+    getClients()
+  ])
   return <SalesClient invoices={invoices} pendingInvoices={pendingInvoices || []} clients={clients} />
 }
