@@ -1,5 +1,4 @@
 'use server'
-import { requireWriteAccess } from '@/lib/admin/actions'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -72,10 +71,6 @@ async function generateDealNumber(supplier: string): Promise<string> {
 }
 
 export async function createDeal(formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -229,10 +224,6 @@ export async function createDeal(formData: FormData) {
 }
 
 export async function updateDealStatus(dealId: string, newStatus: string, notes?: string, dateOverride?: string, additionalDealIds: string[] = [], attInvoiceNumber?: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -329,10 +320,6 @@ export async function updateDealStatus(dealId: string, newStatus: string, notes?
 }
 
 export async function syncDealSoldStatus(dealId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   // Get deal
@@ -398,10 +385,6 @@ export async function syncDealSoldStatus(dealId: string) {
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export async function deleteDeal(dealId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -459,10 +442,6 @@ export async function getDealById(id: string) {
 }
 
 export async function updateDeal(dealId: string, formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -731,10 +710,6 @@ export async function getDealEditHistory(dealId: string) {
 }
 
 export async function bulkCreateDeals(dealsData: any[]) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -910,10 +885,6 @@ export async function moveSkuToOnlineInventory(
   quantityToMove: number,
   totalLandedCost: number
 ) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
 
   // 1. (Obsolete) No longer using Master Deal, we generate inventory_items directly.
@@ -996,10 +967,6 @@ export async function moveSkuToOnlineInventory(
 }
 
 export async function uploadDealDocument(dealId: string, formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
@@ -1036,10 +1003,6 @@ export async function uploadDealDocument(dealId: string, formData: FormData) {
 }
 
 export async function deleteDealDocument(docId: string, url: string, dealId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const pathParts = url.split('/invoices/')

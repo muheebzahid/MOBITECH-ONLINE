@@ -1,5 +1,4 @@
 'use server'
-import { requireWriteAccess } from '@/lib/admin/actions'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -37,10 +36,6 @@ export async function getInventoryByDeal(dealId: string) {
 }
 
 export async function addInventoryBulk(dealId: string, items: any[]) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   // First, fetch the deal to calculate cost per unit
@@ -97,10 +92,6 @@ export async function addInventoryBulk(dealId: string, items: any[]) {
 }
 
 export async function updateInventoryLocation(itemId: string, newLocation: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -133,10 +124,6 @@ export async function updateInventoryLocation(itemId: string, newLocation: strin
 }
 
 export async function updateRefurbStage(itemId: string, newStage: string, updates: { repair_cost?: number, qc_document_url?: string } = {}) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const payload: any = { refurb_stage: newStage }
@@ -155,10 +142,6 @@ export async function updateRefurbStage(itemId: string, newStage: string, update
 }
 
 export async function deleteInventoryItem(itemId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
 
   const { error } = await supabase
@@ -176,10 +159,6 @@ export async function deleteInventoryItem(itemId: string) {
 }
 
 export async function updateInventoryItemImei(itemId: string, imei: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('inventory_items')
@@ -191,10 +170,6 @@ export async function updateInventoryItemImei(itemId: string, imei: string) {
 }
 
 export async function bulkUpdateInventoryItems(updates: { id: string, imei?: string, serial_number?: string, repair_cost?: number }[]) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   for (const update of updates) {

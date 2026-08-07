@@ -1,5 +1,4 @@
 'use server'
-import { requireWriteAccess } from '@/lib/admin/actions'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -53,10 +52,6 @@ export async function getPendingWithdrawals() {
 }
 
 export async function requestWithdrawal(partnerId: string, amount: number, notes?: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -77,10 +72,6 @@ export async function requestWithdrawal(partnerId: string, amount: number, notes
 }
 
 export async function approveTransaction(transactionId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -98,10 +89,6 @@ export async function approveTransaction(transactionId: string) {
 }
 
 export async function rejectTransaction(transactionId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -119,10 +106,6 @@ export async function rejectTransaction(transactionId: string) {
 }
 
 export async function distributeProfit(amount: number) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   // Get partners
@@ -158,10 +141,6 @@ export async function distributeProfit(amount: number) {
 }
 
 export async function injectCapital(partnerId: string, amount: number, notes?: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()

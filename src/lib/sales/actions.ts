@@ -1,5 +1,4 @@
 'use server'
-import { requireWriteAccess } from '@/lib/admin/actions'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -36,10 +35,6 @@ export async function getInvoiceById(id: string) {
 }
 
 export async function createInvoice(formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -114,10 +109,6 @@ export async function createInvoice(formData: FormData) {
 }
 
 export async function uploadInvoiceDocument(invoiceId: string, formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const file = formData.get('file') as File
   if (!file) return { error: 'No file provided' }
 
@@ -150,10 +141,6 @@ export async function uploadInvoiceDocument(invoiceId: string, formData: FormDat
 }
 
 export async function removeInvoiceDocument(invoiceId: string, pdfUrl: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -173,10 +160,6 @@ export async function removeInvoiceDocument(invoiceId: string, pdfUrl: string) {
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export async function deleteInvoice(invoiceId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -208,10 +191,6 @@ export async function deleteInvoice(invoiceId: string) {
 }
 
 export async function issueInvoice(id: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: items } = await supabase.from('invoice_line_items').select('deal_id').eq('invoice_id', id)
   const dealIds = items ? Array.from(new Set(items.map((i: any) => i.deal_id).filter(Boolean))) : []
@@ -235,10 +214,6 @@ export async function issueInvoice(id: string) {
 }
 
 export async function updateInvoiceStatus(id: string, newStatus: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: items } = await supabase.from('invoice_line_items').select('deal_id').eq('invoice_id', id)
   const dealIds = items ? Array.from(new Set(items.map((i: any) => i.deal_id).filter(Boolean))) : []
@@ -261,10 +236,6 @@ export async function updateInvoiceStatus(id: string, newStatus: string) {
 }
 
 export async function updateInvoiceNumber(id: string, invoiceNumber: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('invoices')
@@ -279,10 +250,6 @@ export async function updateInvoiceNumber(id: string, invoiceNumber: string) {
 
 // ── Line Items ──────────────────────────────────────────────
 export async function addLineItem(invoiceId: string, formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const dealId = formData.get('deal_id') as string || null
@@ -317,10 +284,6 @@ export async function addLineItem(invoiceId: string, formData: FormData) {
 }
 
 export async function removeLineItem(invoiceId: string, lineItemId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: oldItem } = await supabase.from('invoice_line_items').select('deal_id').eq('id', lineItemId).single()
 
@@ -343,10 +306,6 @@ export async function removeLineItem(invoiceId: string, lineItemId: string) {
 }
 
 export async function updateLineItemDeal(invoiceId: string, lineItemId: string, dealId: string | null, dealItemId: string | null = null) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: oldItem } = await supabase.from('invoice_line_items').select('deal_id').eq('id', lineItemId).single()
 
@@ -372,10 +331,6 @@ export async function updateLineItemDeal(invoiceId: string, lineItemId: string, 
 
 // ── Payments ────────────────────────────────────────────────
 export async function recordPayment(invoiceId: string, formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -476,10 +431,6 @@ export async function getPendingInvoices() {
 }
 
 export async function updateInvoiceApproval(id: string, status: 'APPROVED' | 'REJECTED') {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('invoices')
@@ -498,10 +449,6 @@ export async function updateInvoiceBilledTo(
   customerEmail: string,
   customerPhone: string
 ) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('invoices')

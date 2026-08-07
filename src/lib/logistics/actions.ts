@@ -1,5 +1,4 @@
 'use server'
-import { requireWriteAccess } from '@/lib/admin/actions'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -48,10 +47,6 @@ export async function getShipmentById(id: string) {
 
 // ── Create shipment ──────────────────────────────────────────
 export async function createShipment(formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -136,10 +131,6 @@ export async function updateShipmentStatus(
   newStatus: ShipmentStatus,
   extraFields?: Record<string, any>
 ) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -206,10 +197,6 @@ export async function updateShipmentStatus(
 
 // ── Update shipment details (edit) ───────────────────────────
 export async function updateShipment(shipmentId: string, formData: FormData) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -305,10 +292,6 @@ export async function updateShipment(shipmentId: string, formData: FormData) {
 
 // ── Remove shipment document ─────────────────────────────────
 export async function removeShipmentDocument(documentId: string, fileUrl: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -329,10 +312,6 @@ export async function removeShipmentDocument(documentId: string, fileUrl: string
 
 // ── Add deal to existing shipment ────────────────────────────
 export async function addDealToShipment(shipmentId: string, dealId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('shipment_deals')
@@ -344,10 +323,6 @@ export async function addDealToShipment(shipmentId: string, dealId: string) {
 
 // ── Remove deal from shipment ────────────────────────────────
 export async function removeDealFromShipment(shipmentId: string, dealId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('shipment_deals')
@@ -388,10 +363,6 @@ export async function getUnshippedDeals() {
 
 // ── Delete shipment ──────────────────────────────────────────
 export async function deleteShipment(shipmentId: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -414,10 +385,6 @@ export async function deleteShipment(shipmentId: string) {
 }
 
 export async function updateShipmentHandler(shipmentId: string, handledBy: string | null) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const { error } = await supabase
     .from('shipments')

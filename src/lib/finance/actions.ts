@@ -1,5 +1,4 @@
 'use server'
-import { requireWriteAccess } from '@/lib/admin/actions'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -22,10 +21,6 @@ export async function getTreasurySettings() {
 }
 
 export async function updateTreasurySettings(amexLimit: number, turboLimit: number, sbLimit: number) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   // We just update the first row
@@ -59,10 +54,6 @@ export async function getWireTransfers() {
 }
 
 export async function logWireTransfer(dealId: string | null, amount: number, destination: string, notes?: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -96,10 +87,6 @@ export async function getRepayments() {
 }
 
 export async function logRepayment(amount: number, source: 'AMEX' | 'CASH_POOL' | 'AMEX_PAYOFF_SB' | 'TURBO_CASH' | 'SB_CASH' | 'TURBO_TO_SB' | 'SB_TO_TURBO' | 'TURBO_TO_AMEX', notes?: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -138,10 +125,6 @@ export async function logRepayment(amount: number, source: 'AMEX' | 'CASH_POOL' 
 }
 
 export async function updateWireTransfer(id: string, amount: number, destination: string, notes?: string, dealId?: string | null) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN' && role !== 'FINANCE') throw new Error('Unauthorized')
   
@@ -155,10 +138,6 @@ export async function updateWireTransfer(id: string, amount: number, destination
 }
 
 export async function deleteWireTransfer(id: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
 
@@ -169,10 +148,6 @@ export async function deleteWireTransfer(id: string) {
 }
 
 export async function updateRepayment(id: string, amount: number, source: 'AMEX' | 'CASH_POOL' | 'AMEX_PAYOFF_SB' | 'TURBO_CASH' | 'SB_CASH' | 'TURBO_TO_SB' | 'SB_TO_TURBO' | 'TURBO_TO_AMEX', notes?: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN' && role !== 'FINANCE') throw new Error('Unauthorized')
 
@@ -186,10 +161,6 @@ export async function updateRepayment(id: string, amount: number, source: 'AMEX'
 }
 
 export async function deleteRepayment(id: string) {
-  await requireWriteAccess();
-
-  await requireWriteAccess();
-
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
 

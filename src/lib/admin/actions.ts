@@ -26,13 +26,6 @@ export async function getUserRole() {
   return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
 }
 
-export async function requireWriteAccess() {
-  const role = await getUserRole()
-  if (role === 'VIEW_ONLY' || role === 'DENIED' || !role) {
-    throw new Error('Unauthorized: View Only mode is active.')
-  }
-}
-
 export async function getAllUsers() {
   const supabase = await createClient()
   // Ensure only SUPER_ADMIN can fetch all users
@@ -49,8 +42,6 @@ export async function getAllUsers() {
 }
 
 export async function updateUserRole(id: string, newRole: 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY') {
-  await requireWriteAccess();
-
   const supabase = await createClient()
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
@@ -67,8 +58,6 @@ export async function updateUserRole(id: string, newRole: 'SUPER_ADMIN' | 'SALES
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export async function addMember(formData: FormData) {
-  await requireWriteAccess();
-
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN') return { error: 'Unauthorized' }
 
@@ -107,8 +96,6 @@ export async function addMember(formData: FormData) {
 }
 
 export async function deleteMember(authUserId: string) {
-  await requireWriteAccess();
-
   const role = await getUserRole()
   if (role !== 'SUPER_ADMIN') return { error: 'Unauthorized' }
 
