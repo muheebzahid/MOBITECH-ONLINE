@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { getTreasurySettings, getWireTransfers, getRepayments, getTreasuryData } from '@/lib/finance/actions'
 import { getTreasuryTransactions } from '@/lib/accounting/treasuryActions'
 import { getUserRole } from '@/lib/admin/actions'
@@ -6,7 +7,7 @@ import FinanceClient from './FinanceClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function FinancePage() {
+async function FinanceContent() {
   const role = await getUserRole()
   if (role === 'LOGISTICS' || role === 'SALES') redirect('/dashboard')
   const settings = await getTreasurySettings()
@@ -28,3 +29,17 @@ export default async function FinancePage() {
     />
   )
 }
+
+export default function FinancePage() {
+  return (
+    <Suspense fallback={
+      <div style={{ padding: '40px', color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '18px', height: '18px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <span>Loading Financial Treasury & P&L Statements...</span>
+      </div>
+    }>
+      <FinanceContent />
+    </Suspense>
+  )
+}
+

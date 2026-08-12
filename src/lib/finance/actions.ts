@@ -5,7 +5,9 @@ import { revalidatePath } from 'next/cache'
 import { getUserRole } from '@/lib/admin/actions'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
-export async function getTreasurySettings() {
+import { cache } from 'react'
+
+export const getTreasurySettings = cache(async () => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('treasury_settings')
@@ -18,7 +20,7 @@ export async function getTreasurySettings() {
     return { amex_limit: 500000, turbo_cash_limit: 150000, sb_cash_limit: 150000 }
   }
   return data
-}
+})
 
 export async function updateTreasurySettings(amexLimit: number, turboLimit: number, sbLimit: number) {
   const supabase = await createClient()

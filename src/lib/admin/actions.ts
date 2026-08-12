@@ -3,7 +3,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export async function getUserRole() {
+import { cache } from 'react'
+
+export const getUserRole = cache(async () => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -24,7 +26,7 @@ export async function getUserRole() {
   }
 
   return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
-}
+})
 
 export async function getAllUsers() {
   const supabase = await createClient()
