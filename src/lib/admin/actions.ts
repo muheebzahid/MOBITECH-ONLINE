@@ -30,7 +30,7 @@ export async function getAllUsers() {
   const supabase = await createClient()
   // Ensure only SUPER_ADMIN can fetch all users
   const role = await getUserRole()
-  if (role !== 'SUPER_ADMIN' && role !== 'VIEW_ONLY') throw new Error('Unauthorized')
+  if (role !== 'SUPER_ADMIN') throw new Error('Unauthorized')
 
   const { data, error } = await supabase
     .from('user_roles')
