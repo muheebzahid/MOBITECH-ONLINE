@@ -4,6 +4,8 @@ import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { logExpense, editExpense, deleteExpense } from '@/lib/accounting/actions'
 import { createClient } from '@/lib/supabase/client'
+import TreasuryControlSection from '@/components/accounting/TreasuryControlSection'
+import { TreasuryTransaction } from '@/lib/accounting/treasuryActions'
 
 type FinancialSummary = {
   revenue: number
@@ -31,6 +33,7 @@ export default function AccountingClient({
   expenseHistory,
   partners = [],
   partnerTransactions = [],
+  treasuryTransactions = [],
   statementDates = [],
   selectedStatementDate,
   fromDate,
@@ -39,8 +42,9 @@ export default function AccountingClient({
 }: { 
   summary: { usd: FinancialSummary, aed: FinancialSummary }, 
   expenseHistory: any[],
-  partners: any[],
-  partnerTransactions: any[],
+  partners?: any[],
+  partnerTransactions?: any[],
+  treasuryTransactions?: TreasuryTransaction[],
   statementDates?: string[],
   selectedStatementDate?: string,
   fromDate?: string,
@@ -135,6 +139,25 @@ export default function AccountingClient({
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format(val)
+  }
+
+  const [isSyncingExpenses, setIsSyncingExpenses] = useState(false)
+
+  const handleSyncExpensesLive = async () => {
+    setIsSyncingExpenses(true)
+    try {
+      const res = await fetch('/api/sync/expenses/execute', { method: 'POST' })
+      const resData = await res.json()
+      if (!resData.success) {
+        throw new Error(resData.error || 'Failed to sync expenses')
+      }
+      alert(`✅ Successfully synced ${resData.synced_count} operating expense(s) live to Online Cloud ERP (the-workflows.com)!`)
+      router.refresh()
+    } catch (err: any) {
+      alert('⚠️ Expense Sync Error: ' + err.message)
+    } finally {
+      setIsSyncingExpenses(false)
+    }
   }
 
   return (
@@ -269,6 +292,15 @@ export default function AccountingClient({
               AED
             </button>
           </div>
+          <button
+            className="btn-primary"
+            onClick={handleSyncExpensesLive}
+            disabled={isSyncingExpenses}
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <span>⚡</span>
+            {isSyncingExpenses ? 'Syncing Expenses Live...' : 'Sync Expenses Live to Cloud'}
+          </button>
           <button className="btn-primary" onClick={() => {
             resetForm()
             setEditingExpense(null)
@@ -549,6 +581,13 @@ export default function AccountingClient({
 
         </div>
       </div>
+
+      {/* Monthly Treasury Settlement & AMEX Payoff History */}
+      <TreasuryControlSection
+        initialTransactions={treasuryTransactions}
+        currency={currency}
+        userRole={userRole || ''}
+      />
 
       {/* Log Expense Modal */}
       {showExpenseModal && (

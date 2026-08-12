@@ -3,19 +3,31 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE') {
+const ORDERS_PAGE_SIZE = 25
+
+export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: number = 0) {
   const supabase = await createClient()
+
+  const { count } = await supabase
+    .from('online_orders')
+    .select('*', { count: 'exact', head: true })
+    .eq('platform', platform)
+
+  const from = page * ORDERS_PAGE_SIZE
+  const to = from + ORDERS_PAGE_SIZE - 1
+
   const { data, error } = await supabase
     .from('online_orders')
     .select('*, items:online_order_items(*), inventory_items(id, imei, serial_number)')
     .eq('platform', platform)
     .order('sale_date', { ascending: false })
+    .range(from, to)
 
   if (error) {
     console.error('getOnlineOrders error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+  return { data: data || [], total: count || 0 }
 }
 
 export async function getOnlineOrderById(id: string) {

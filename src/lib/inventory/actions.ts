@@ -4,8 +4,18 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { getDealById } from '@/lib/deals/actions'
 
-export async function getAllInventory() {
+const INVENTORY_PAGE_SIZE = 25
+
+export async function getAllInventory(page: number = 0) {
   const supabase = await createClient()
+
+  const { count } = await supabase
+    .from('inventory_items')
+    .select('*', { count: 'exact', head: true })
+
+  const from = page * INVENTORY_PAGE_SIZE
+  const to = from + INVENTORY_PAGE_SIZE - 1
+
   const { data, error } = await supabase
     .from('inventory_items')
     .select(`
@@ -15,12 +25,13 @@ export async function getAllInventory() {
       online_orders(order_number, platform)
     `)
     .order('created_at', { ascending: false })
+    .range(from, to)
   
   if (error) {
     console.error('getAllInventory error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+  return { data: data || [], total: count || 0 }
 }
 
 export async function getInventoryByDeal(dealId: string) {
@@ -144,6 +155,11 @@ export async function updateRefurbStage(itemId: string, newStage: string, update
 export async function deleteInventoryItem(itemId: string) {
   const supabase = await createClient()
 
+  // 1. Get the item before deleting
+  const { data: item } = await supabase.from('inventory_items').select('*').eq('id', itemId).single()
+  if (!item) return { error: 'Item not found' }
+
+  // 2. Delete the item
   const { error } = await supabase
     .from('inventory_items')
     .delete()
@@ -154,8 +170,43 @@ export async function deleteInventoryItem(itemId: string) {
     return { error: error.message }
   }
 
+  // 3. Try to find an internal invoice line item that pulled this stock
+  const { data: lineItems } = await supabase
+    .from('invoice_line_items')
+    .select('id, quantity, invoices!inner(customer_name)')
+    .eq('deal_id', item.deal_id)
+    .eq('invoices.customer_name', 'Internal - Online Inventory')
+    .ilike('description', `%${item.model}%`)
+    .gt('quantity', 0)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (lineItems && lineItems.length > 0) {
+    const lineItem = lineItems[0]
+    const newQty = lineItem.quantity - 1
+
+    if (newQty <= 0) {
+      await supabase.from('invoice_line_items').delete().eq('id', lineItem.id)
+    } else {
+      await supabase.from('invoice_line_items').update({ quantity: newQty }).eq('id', lineItem.id)
+    }
+  }
+
   revalidatePath('/dashboard/inventory')
   return { success: true }
+}
+
+export async function bulkDeleteInventoryItems(itemIds: string[]) {
+  const supabase = await createClient()
+  const results = []
+  
+  for (const itemId of itemIds) {
+    // Process sequentially to avoid race conditions on the invoice_line_items decrement
+    const res = await deleteInventoryItem(itemId)
+    results.push(res)
+  }
+  
+  return results
 }
 
 export async function updateInventoryItemImei(itemId: string, imei: string) {

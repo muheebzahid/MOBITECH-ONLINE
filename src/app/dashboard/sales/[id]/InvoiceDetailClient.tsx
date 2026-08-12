@@ -3,8 +3,9 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { INVOICE_STATUSES, PAYMENT_METHODS, type InvoiceStatus } from '@/lib/sales/constants'
-import { addLineItem, removeLineItem, recordPayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus, updateInvoiceBilledTo, updateInvoiceNumber } from '@/lib/sales/actions'
+import { addLineItem, removeLineItem, recordPayment, deletePayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus, updateInvoiceBilledTo, updateInvoiceNumber } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
+import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
 
 function fmt(n: number) {
   const parts = Number(n || 0).toString().split('.')
@@ -32,6 +33,8 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [syncDealIds, setSyncDealIds] = useState<string[]>([])
   const [showLineItem, setShowLineItem] = useState(false)
   const [showPayment, setShowPayment] = useState(false)
   const [error, setError] = useState('')
@@ -120,6 +123,18 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   const [payForm, setPayForm] = useState({ amount: invoice.balance_due.toString(), payment_date: new Date().toISOString().split('T')[0], payment_method: 'WIRE_TRANSFER', reference_number: '', notes: '' })
 
   const st = INVOICE_STATUSES[invoice.status as InvoiceStatus]
+
+
+  const handleDeletePayment = (paymentId: string) => {
+    if (!window.confirm('Are you sure you want to delete this payment?')) return
+    startTransition(async () => {
+      const res = await deletePayment(invoice.id, paymentId)
+      if (res.error) {
+        setError(res.error)
+        alert(res.error)
+      }
+    })
+  }
 
   const handleDeleteInvoice = () => {
     if (!window.confirm('Are you sure you want to permanently delete this invoice? This will remove all associated line items and payments. This action cannot be undone.')) return
@@ -391,6 +406,21 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
           <p className="dh-sub">{invoice.customer_name} &middot; Issued: {fmtD(invoice.issue_date)}</p>
         </div>
         <div className="dh-actions">
+          <button
+            className="btn-primary"
+            onClick={() => {
+              const dIds = Array.from(new Set((invoice.invoice_line_items || []).map((i: any) => i.deal_id).filter(Boolean)))
+              if (dIds.length === 0) {
+                alert('This invoice has no linked deal package to sync. Please link a deal line item first.')
+                return
+              }
+              setSyncDealIds(dIds as string[])
+              setShowSyncModal(true)
+            }}
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            ⚡ Update Live Cloud
+          </button>
           {role === 'SUPER_ADMIN' && (
             <button className="btn-ghost" style={{ color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }} onClick={handleDeleteInvoice} disabled={isPending}>
               🗑 Delete
@@ -687,7 +717,20 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                   <div key={pay.id} style={{ border:'1px solid var(--border-subtle)', borderRadius:'var(--radius-sm)', padding:'12px', background:'var(--bg-elevated)' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
                       <strong style={{ fontSize:'14px', color:'#22c55e' }}>+{fmt(pay.amount)}</strong>
-                      <span style={{ fontSize:'11px', color:'var(--text-muted)' }}>{fmtD(pay.payment_date)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize:'11px', color:'var(--text-muted)' }}>{fmtD(pay.payment_date)}</span>
+                        {role === 'SUPER_ADMIN' && (
+                          <button 
+                            className="btn-ghost" 
+                            style={{ color: '#ef4444', padding: '0 4px', fontSize: '12px' }}
+                            onClick={() => handleDeletePayment(pay.id)}
+                            disabled={isPending}
+                            title="Delete Payment"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div style={{ fontSize:'12px', color:'var(--text-secondary)' }}>
                       {PAYMENT_METHODS.find(m => m.value === pay.payment_method)?.label || pay.payment_method}
@@ -977,6 +1020,18 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Live Sync Modal */}
+      {showSyncModal && syncDealIds.length > 0 && (
+        <UpdateLiveSyncModal
+          dealIds={syncDealIds}
+          isOpen={showSyncModal}
+          onClose={() => {
+            setShowSyncModal(false)
+            router.refresh()
+          }}
+        />
       )}
     </div>
   )

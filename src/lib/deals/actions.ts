@@ -407,14 +407,48 @@ export async function deleteDeal(dealId: string) {
   return { success: true }
 }
 
-export async function getDeals() {
+const DEALS_PAGE_SIZE = 25
+
+export async function getDeals(page: number = 0) {
   const supabase = await createClient()
+
+  // Get total count first
+  const { count } = await supabase
+    .from('deals')
+    .select('*', { count: 'exact', head: true })
+
+  const from = page * DEALS_PAGE_SIZE
+  const to = from + DEALS_PAGE_SIZE - 1
+
   const { data, error } = await supabase
     .from('deals')
     .select('*, items:deal_items(*), shipment_deals(shipments(id, shipment_number, total_logistics_cost, shipment_deals(deals(quantity)))), invoice_line_items(quantity, unit_price, deal_item_id, invoices(id, status, amount_paid, issue_date))')
     .order('created_at', { ascending: false })
-  if (error) return []
-  return data.map((deal: any) => enrichDealFinancials(deal))
+    .range(from, to)
+  if (error) return { data: [], total: 0 }
+
+  const { data: syncStates } = await supabase
+    .from('record_sync_state')
+    .select('source_record_id, last_synced_at')
+    .eq('source_table', 'deals')
+
+  const syncMap: Record<string, string> = {}
+  if (syncStates) {
+    for (const ss of syncStates) {
+      syncMap[ss.source_record_id] = ss.last_synced_at
+    }
+  }
+
+  const enriched = data.map((deal: any) => {
+    const syncedAt = deal.synced_to_online_at || deal.last_synced_at || syncMap[deal.id] || null
+    return enrichDealFinancials({
+      ...deal,
+      synced_to_online_at: syncedAt,
+      last_synced_at: syncedAt
+    })
+  })
+
+  return { data: enriched, total: count || 0 }
 }
 
 export async function getDealById(id: string) {

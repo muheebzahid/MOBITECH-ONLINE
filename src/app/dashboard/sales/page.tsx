@@ -6,13 +6,17 @@ import SalesClient from './SalesClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function SalesPage() {
+export default async function SalesPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const role = await getUserRole()
   if (role === 'LOGISTICS') redirect('/dashboard')
-  const [invoices, pendingInvoices, clients] = await Promise.all([
-    getInvoices(),
+  const resolvedParams = await searchParams
+  const month = resolvedParams?.month || ''
+
+  const [invoicesRes, pendingInvoices, clients] = await Promise.all([
+    getInvoices(month),
     getPendingInvoices(),
     getClients()
   ])
-  return <SalesClient invoices={invoices} pendingInvoices={pendingInvoices || []} clients={clients} />
+
+  return <SalesClient invoices={invoicesRes.data} invoicesTotal={invoicesRes.total} currentMonth={month} pendingInvoices={pendingInvoices || []} clients={clients} />
 }

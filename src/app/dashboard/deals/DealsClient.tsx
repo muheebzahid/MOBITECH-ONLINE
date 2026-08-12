@@ -1,4 +1,5 @@
 'use client'
+import PaginationBar from '@/components/PaginationBar'
 
 import { useState, useEffect, Suspense, useTransition, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -7,12 +8,15 @@ import { useRole } from '@/components/RoleProvider'
 import { bulkCreateDeals, updateDealStatus } from '@/lib/deals/actions'
 import NewDealModal from './NewDealModal'
 import EditDealModal from './EditDealModal'
+import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 
 interface Props { 
   deals: Deal[]
   settings: any
+  total?: number
+  page?: number
 }
 
 function fmt(n: number) {
@@ -56,7 +60,7 @@ function getShipmentColor(shipmentId: string) {
   return SHIPMENT_COLORS[Math.abs(hash) % SHIPMENT_COLORS.length];
 }
 
-function DealsClientInner({ deals, settings }: Props) {
+function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
   const [showModal, setShowModal] = useState(false)
   const [editDeal, setEditDeal]   = useState<Deal | null>(null)
   const [showAmexDetails, setShowAmexDetails] = useState(false)
@@ -82,6 +86,7 @@ function DealsClientInner({ deals, settings }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [selectedDealIds, setSelectedDealIds] = useState<string[]>([])
+  const [showSyncModal, setShowSyncModal] = useState(false)
   const [showBulkAdvance, setShowBulkAdvance] = useState(false)
   const [bulkStatus, setBulkStatus] = useState<string>('')
   const [bulkDate, setBulkDate] = useState(() => new Date().toISOString().split('T')[0])
@@ -912,9 +917,31 @@ function DealsClientInner({ deals, settings }: Props) {
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <a href={`/dashboard/deals/${deal.id}`} className="deal-number-link">
-                          {deal.deal_number}
-                        </a>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <a href={`/dashboard/deals/${deal.id}`} className="deal-number-link">
+                            {deal.deal_number}
+                          </a>
+                          {(deal as any).synced_to_online_at && (
+                            <span 
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                color: '#10B981',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={`Uploaded Live Cloud on ${new Date((deal as any).synced_to_online_at).toLocaleString()}`}
+                            >
+                              ⚡ Uploaded {new Date((deal as any).synced_to_online_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
                         {(deal as any).shipment_deals && (deal as any).shipment_deals.map((sd: any) => sd.shipments && (
                           <a key={sd.shipments.id} href={`/dashboard/logistics/${sd.shipments.id}`} className="deal-number-link" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                             📦 {sd.shipments.shipment_number}
@@ -1068,10 +1095,31 @@ function DealsClientInner({ deals, settings }: Props) {
       {selectedDealIds.length > 0 && (
         <div style={{position:'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', background:'var(--bg-card)', border:'1px solid var(--border)', padding:'12px 24px', borderRadius:'100px', display:'flex', alignItems:'center', gap:'16px', boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:100}}>
           <span style={{fontWeight:500}}>{selectedDealIds.length} deals selected</span>
+          {role === 'SUPER_ADMIN' && (
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', border: 'none', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowSyncModal(true)
+              }}
+            >
+              ⚡ Update Live
+            </button>
+          )}
           <button className="btn-primary" onClick={() => setShowBulkAdvance(true)}>Change Status</button>
           <button className="btn-ghost" onClick={()=>setSelectedDealIds([])}>Cancel</button>
         </div>
       )}
+
+      <UpdateLiveSyncModal
+        dealIds={selectedDealIds}
+        isOpen={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        onAddRequiredDeals={(newIds) => setSelectedDealIds(newIds)}
+      />
 
       {showBulkAdvance && (
         <div className="modal-overlay" onClick={(e:any)=>{if(e.target===e.currentTarget)setShowBulkAdvance(false)}}>
@@ -1119,14 +1167,15 @@ function DealsClientInner({ deals, settings }: Props) {
 
       {showModal && <NewDealModal onClose={() => setShowModal(false)} />}
       {editDeal  && <EditDealModal deal={editDeal} onClose={() => setEditDeal(null)} />}
+      <PaginationBar page={page} pageSize={25} total={total} baseUrl="/dashboard/deals" />
     </div>
   )
 }
 
-export default function DealsClient({ deals, settings }: Props) {
+export default function DealsClient({ deals, settings, total = 0, page = 0 }: Props) {
   return (
     <Suspense fallback={<div style={{ padding: '40px' }}>Loading deals...</div>}>
-      <DealsClientInner deals={deals} settings={settings} />
+      <DealsClientInner deals={deals} settings={settings} total={total} page={page} />
     </Suspense>
   )
 }

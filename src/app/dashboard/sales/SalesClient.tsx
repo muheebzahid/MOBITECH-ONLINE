@@ -23,7 +23,7 @@ function fmtS(n: number) {
 
 function fmtD(d: string|null|undefined) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}) }
 
-export default function SalesClient({ invoices, pendingInvoices = [], clients = [] }: { invoices: any[], pendingInvoices?: any[], clients?: any[] }) {
+export default function SalesClient({ invoices, pendingInvoices = [], clients = [], invoicesTotal = 0, currentMonth = 'all' }: { invoices: any[], pendingInvoices?: any[], clients?: any[], invoicesTotal?: number, currentMonth?: string }) {
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
@@ -124,25 +124,30 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           <h1 className="page-title">Sales & Invoicing</h1>
           <p className="page-subtitle">Manage wholesale invoices and reconcile payments</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowNew(true)}>+ New Invoice</button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="log-summary-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        <div className="log-sum-card log-sum-blue">
-          <span className="log-sum-label">Outstanding Receivables</span>
-          <span className="log-sum-value">{fmtS(totalReceivables)}</span>
-          <span className="log-sum-sub">Total balance due</span>
-        </div>
-        <div className="log-sum-card log-sum-green">
-          <span className="log-sum-label">Total Collected</span>
-          <span className="log-sum-value">{fmtS(totalPaid)}</span>
-          <span className="log-sum-sub">Payments received</span>
-        </div>
-        <div className="log-sum-card log-sum-amber">
-          <span className="log-sum-label">Overdue Invoices</span>
-          <span className="log-sum-value">{overdueInvoices}</span>
-          <span className="log-sum-sub">Past due date</span>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <select 
+            className="form-input" 
+            value={currentMonth || 'all'}
+            onChange={e => {
+              const m = e.target.value;
+              if (m === 'all') {
+                router.push('/dashboard/sales');
+              } else {
+                router.push(`/dashboard/sales?month=${m}`);
+              }
+            }}
+            style={{ padding: '6px 12px', fontSize: '13px', width: 'auto' }}
+          >
+            <option value="all">All Time</option>
+            {Array.from({ length: 24 }).map((_, i) => {
+              const d = new Date();
+              d.setMonth(d.getMonth() - i);
+              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+              return <option key={val} value={val}>{label}</option>
+            })}
+          </select>
+          <button className="btn-primary" onClick={() => setShowNew(true)}>+ New Invoice</button>
         </div>
       </div>
 
@@ -476,6 +481,7 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           </div>
         </div>
       )}
+      
     </div>
   )
 }

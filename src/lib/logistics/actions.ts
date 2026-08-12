@@ -4,9 +4,19 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ShipmentStatus } from './constants'
 
+const SHIPMENTS_PAGE_SIZE = 25
+
 // ── List all shipments ───────────────────────────────────────
-export async function getShipments() {
+export async function getShipments(page: number = 0) {
   const supabase = await createClient()
+
+  const { count } = await supabase
+    .from('shipments')
+    .select('*', { count: 'exact', head: true })
+
+  const from = page * SHIPMENTS_PAGE_SIZE
+  const to = from + SHIPMENTS_PAGE_SIZE - 1
+
   const { data, error } = await supabase
     .from('shipments')
     .select(`
@@ -17,12 +27,13 @@ export async function getShipments() {
       )
     `)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (error) {
     console.error('getShipments error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+  return { data: data || [], total: count || 0 }
 }
 
 // ── Get single shipment ──────────────────────────────────────

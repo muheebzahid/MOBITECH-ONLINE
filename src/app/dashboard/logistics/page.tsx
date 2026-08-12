@@ -6,12 +6,13 @@ import LogisticsClient from './LogisticsClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function LogisticsPage() {
+export default async function LogisticsPage({ searchParams }: { searchParams: { page?: string } }) {
   const role = await getUserRole()
   if (role === 'SALES') redirect('/dashboard')
-  const [shipments, unshippedDeals] = await Promise.all([
-    getShipments(),
+  const page = Math.max(0, parseInt(searchParams?.page || '0') || 0)
+  const [{ data: shipments, total }, unshippedDeals] = await Promise.all([
+    getShipments(page),
     getUnshippedDeals(),
   ])
-  return <LogisticsClient shipments={shipments} unshippedDeals={unshippedDeals} />
+  return <LogisticsClient shipments={shipments} shipmentsTotal={total} shipmentsPage={page} unshippedDeals={unshippedDeals} />
 }

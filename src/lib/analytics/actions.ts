@@ -119,3 +119,116 @@ export async function getProfitabilityHeatmap() {
     })
     .sort((a, b) => b.revenue - a.revenue)
 }
+
+export async function getProcurementForecast() {
+  const supabase = await createClient()
+  
+  const { data: invoiceLineItems } = await supabase
+    .from('invoice_line_items')
+    .select('deal_item_id, quantity, unit_price, invoices!inner(status, issue_date)')
+    .in('invoices.status', ['PAID', 'PARTIAL', 'ISSUED'])
+
+  const { data: dealItems } = await supabase
+    .from('deal_items')
+    .select('*, deals(auction_fee, total_cost)')
+
+  const { data: onlineInventory } = await supabase
+    .from('inventory_items')
+    .select('model, storage, grade, status, target_price')
+
+  // Map to hold results: Key = Model|Storage|Grade
+  const forecast: Record<string, any> = {}
+
+  const getForecastNode = (model: string, storage: string, grade: string) => {
+    model = model || 'Unknown'
+    storage = storage || 'Unknown'
+    grade = grade || 'Unknown'
+    const key = `${model.trim()}|${storage.trim()}|${grade.trim()}`
+    if (!forecast[key]) forecast[key] = { 
+      model: model.trim(), 
+      storage: storage.trim(),
+      grade: grade.trim(), 
+      totalSold: 0, 
+      earliestSale: null, 
+      currentStock: 0,
+      invoicedSold: 0,
+      invoicedRevenue: 0,
+      totalCost: 0,
+      totalAuctionFee: 0,
+      totalInitialQty: 0
+    }
+    return forecast[key]
+  }
+
+  // Calculate total deal items (initial stock)
+  ;(dealItems || []).forEach(di => {
+    const node = getForecastNode(di.model, di.storage, di.grade)
+    node.currentStock += (di.quantity || 0)
+    node.totalInitialQty += (di.quantity || 0)
+    
+    const cost = Number(di.unit_cost || 0)
+    node.totalCost += cost * (di.quantity || 0)
+    
+    // Calculate auction fee for this item based on deal's average
+    if (di.deals && di.deals.total_cost > 0) {
+      const feeRatio = (Number(di.deals.auction_fee) || 0) / Number(di.deals.total_cost)
+      node.totalAuctionFee += (cost * feeRatio) * (di.quantity || 0)
+    }
+  })
+
+  // Subtract B2B sold units from stock and calculate sales velocity
+  ;(invoiceLineItems || []).forEach(li => {
+    if (!li.deal_item_id) return
+    const dItem = dealItems?.find(d => d.id === li.deal_item_id)
+    if (!dItem) return
+
+    const node = getForecastNode(dItem.model, dItem.storage, dItem.grade)
+    node.currentStock -= (li.quantity || 0)
+    node.totalSold += (li.quantity || 0)
+    node.invoicedSold += (li.quantity || 0)
+    node.invoicedRevenue += (li.quantity || 0) * Number(li.unit_price || 0)
+
+    const issueDate = new Date(li.invoices.issue_date).getTime()
+    if (!node.earliestSale || issueDate < node.earliestSale) {
+      node.earliestSale = issueDate
+    }
+  })
+
+  // Subtract B2C pulled inventory from stock
+  ;(onlineInventory || []).forEach(inv => {
+    const node = getForecastNode(inv.model, inv.storage, inv.grade)
+    node.currentStock -= 1
+    if (inv.status === 'SOLD') {
+      node.totalSold += 1
+    }
+  })
+
+  const now = new Date().getTime()
+
+  return Object.values(forecast)
+    .map(n => {
+      // Calculate months active (min 1 month)
+      const msActive = n.earliestSale ? now - n.earliestSale : 0
+      let monthsActive = msActive / (1000 * 60 * 60 * 24 * 30.44)
+      if (monthsActive < 1) monthsActive = 1 // If less than a month, assume 1 month for conservative run rate
+
+      n.mrr = Math.round(n.totalSold / monthsActive)
+      n.currentStock = Math.max(0, n.currentStock) // Don't show negative stock
+      n.shortfall = Math.max(0, n.mrr - n.currentStock)
+      
+      // Target for auction: Restock for a full month (MRR)
+      n.recommendedBid = Math.max(0, n.mrr - n.currentStock)
+      
+      // If stock is below 50% of MRR, it's a critical low stock alert
+      n.isLowStock = n.mrr > 0 && n.currentStock <= (n.mrr * 0.5)
+
+      // Calculate averages (Force rebuild 1)
+      n.avgSellingPrice = n.invoicedSold > 0 ? n.invoicedRevenue / n.invoicedSold : 0
+      n.avgUnitCost = n.totalInitialQty > 0 ? n.totalCost / n.totalInitialQty : 0
+      n.avgAuctionFee = n.totalInitialQty > 0 ? n.totalAuctionFee / n.totalInitialQty : 0
+
+      return n
+    })
+    .filter(n => n.totalSold > 0 || n.currentStock > 0)
+    .sort((a, b) => b.mrr - a.mrr)
+}

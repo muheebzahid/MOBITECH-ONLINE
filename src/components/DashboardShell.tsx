@@ -39,7 +39,17 @@ export default function DashboardShell({ user, children }: Props) {
     { id: 'online-sales', label: 'Online Sales', icon: '🛒', href: '/dashboard/online-sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
     { id: 'clients', label: 'Clients', icon: '👤', href: '/dashboard/clients', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
     { id: 'accounting', label: 'Accounting', icon: '📊', href: '/dashboard/accounting', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
-    { id: 'analytics', label: 'Analytics', icon: '📈', href: '/dashboard/analytics', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
+    { 
+      id: 'analytics', 
+      label: 'Analytics', 
+      icon: '📈', 
+      href: '/dashboard/analytics', 
+      roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'],
+      subItems: [
+        { id: 'analytics-heatmap', label: 'Profitability Heatmap', href: '/dashboard/analytics?tab=heatmap' },
+        { id: 'analytics-forecast', label: 'Procurement Forecast', href: '/dashboard/analytics?tab=forecast' }
+      ]
+    },
     { id: 'partners', label: 'Partners', icon: '🤝', href: '/dashboard/partners', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
     { id: 'finance', label: 'Treasury', icon: '🏦', href: '/dashboard/finance', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
     { id: 'admin', label: 'Admin', icon: '⚙️', href: '/dashboard/admin', roles: ['SUPER_ADMIN'] }
@@ -82,16 +92,40 @@ export default function DashboardShell({ user, children }: Props) {
           {navItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
             return (
-              <Link
-                key={item.id}
-                href={item.href}
-                id={`nav-${item.id}`}
-                className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
-              >
-                <span className="nav-icon">{item.icon}</span>
-                {isExpanded && <span className="nav-label">{item.label}</span>}
-                {isActive && <span className="nav-indicator" />}
-              </Link>
+              <div key={item.id} className="nav-group">
+                <Link
+                  href={item.href}
+                  id={`nav-${item.id}`}
+                  className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  {isExpanded && <span className="nav-label">{item.label}</span>}
+                  {isActive && <span className="nav-indicator" />}
+                </Link>
+                {/* Render sub-modules only if sidebar is expanded and parent is active */}
+                {isExpanded && isActive && item.subItems && (
+                  <div className="nav-subitems" style={{ paddingLeft: '44px', marginTop: '2px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {item.subItems.map(sub => (
+                      <Link 
+                        key={sub.id} 
+                        href={sub.href} 
+                        style={{ 
+                          color: 'var(--text-muted)', 
+                          fontSize: '13px', 
+                          textDecoration: 'none', 
+                          padding: '6px 0',
+                          transition: 'color 0.2s',
+                          display: 'block'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text)'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                      >
+                        {sub.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             )
           })}
         </nav>

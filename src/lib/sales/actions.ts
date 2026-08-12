@@ -3,19 +3,34 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+const INVOICES_PAGE_SIZE = 25
+
 // ── Invoices ────────────────────────────────────────────────
-export async function getInvoices() {
+export async function getInvoices(month?: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+
+  let countQuery = supabase.from('invoices').select('*', { count: 'exact', head: true })
+  let dataQuery = supabase
     .from('invoices')
     .select(`*, invoice_line_items(quantity, description, deals(id, deal_number, model))`)
     .order('created_at', { ascending: false })
+
+  if (month && month !== 'all') {
+    const [y, m] = month.split('-').map(Number)
+    const startDate = new Date(y, m - 1, 1).toISOString()
+    const endDate = new Date(y, m, 1).toISOString()
+    countQuery = countQuery.gte('issue_date', startDate).lt('issue_date', endDate)
+    dataQuery = dataQuery.gte('issue_date', startDate).lt('issue_date', endDate)
+  }
+
+  const { count } = await countQuery
+  const { data, error } = await dataQuery
   
   if (error) {
     console.error('getInvoices error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+  return { data: data || [], total: count || 0 }
 }
 
 export async function getInvoiceById(id: string) {
@@ -330,6 +345,27 @@ export async function updateLineItemDeal(invoiceId: string, lineItemId: string, 
 }
 
 // ── Payments ────────────────────────────────────────────────
+
+async function syncInvoiceStatus(invoiceId: string, supabase: any) {
+  const { data: inv } = await supabase.from('invoices').select('balance_due, total_amount, status').eq('id', invoiceId).single()
+  if (!inv) return;
+  
+  let newStatus = inv.status;
+  if (inv.balance_due <= 0 && inv.status !== 'PAID') {
+    newStatus = 'PAID';
+  } else if (inv.balance_due > 0 && inv.balance_due < inv.total_amount && inv.status !== 'PARTIAL') {
+    newStatus = 'PARTIAL';
+  } else if (inv.balance_due >= inv.total_amount && inv.status === 'PARTIAL') {
+    newStatus = 'ISSUED';
+  } else if (inv.balance_due >= inv.total_amount && inv.status === 'PAID') {
+    newStatus = 'ISSUED';
+  }
+
+  if (newStatus !== inv.status) {
+    await supabase.from('invoices').update({ status: newStatus }).eq('id', invoiceId);
+  }
+}
+
 export async function recordPayment(invoiceId: string, formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -347,6 +383,8 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
 
   const { error } = await supabase.from('payments').insert(payload)
   if (error) return { error: error.message }
+
+  await syncInvoiceStatus(invoiceId, supabase);
   
   revalidatePath(`/dashboard/sales/${invoiceId}`)
   revalidatePath('/dashboard/sales')
@@ -361,13 +399,15 @@ export async function getAvailableDeals() {
     .select(`
       id, deal_number, model, storage, grade, quantity,
       items:deal_items(*),
-      invoice_line_items(deal_id, deal_item_id, quantity, invoices!inner(status))
+      invoice_line_items(deal_id, deal_item_id, quantity, invoices(status))
     `)
     .order('created_at', { ascending: false })
   
   if (error) {
-    console.error('Error fetching available deals:', error)
-    return []
+    const errObj = typeof error === 'object' && error !== null ? error : { message: String(error) }
+    const details = Object.entries(errObj).map(([k,v]) => `${k}: ${v}`).join(', ')
+    console.error('Error fetching available deals:', details)
+    throw new Error('Database Error: ' + details)
   }
 
   // Calculate remaining quantities
@@ -463,4 +503,24 @@ export async function updateInvoiceBilledTo(
   if (error) throw error
   revalidatePath('/dashboard/sales')
   revalidatePath(`/dashboard/sales/${id}`)
+}
+
+
+export async function deletePayment(invoiceId: string, paymentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+  
+  const { getUserRole } = await import('@/lib/admin/actions')
+  const role = await getUserRole()
+  if (role !== 'SUPER_ADMIN') return { error: 'Only super admin can delete payments' }
+
+  const { error } = await supabase.from('payments').delete().eq('id', paymentId).eq('invoice_id', invoiceId)
+  if (error) return { error: error.message }
+
+  await syncInvoiceStatus(invoiceId, supabase);
+  
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true }
 }

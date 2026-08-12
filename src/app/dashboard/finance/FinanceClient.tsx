@@ -10,6 +10,7 @@ interface Props {
   deals: any[]
   invoices: any[]
   userRole?: string
+  treasuryTransactions?: any[]
 }
 
 function fmt(n: number) {
@@ -48,7 +49,7 @@ function parseInputNumber(value: string) {
   return Number(value.replace(/,/g, ''))
 }
 
-export default function FinanceClient({ settings, wires, repayments, deals, invoices, userRole }: Props) {
+export default function FinanceClient({ settings, wires, repayments, deals, invoices, userRole, treasuryTransactions = [] }: Props) {
   const [isPending, startTransition] = useTransition()
   
   // Modals
@@ -81,8 +82,8 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
   // ---------------------------------------------
   
   const amexLimitVal = settings.amex_limit ?? 500000
-  const turboLimitVal = settings.turbo_cash_limit ?? 150000
-  const sbLimitVal = settings.sb_cash_limit ?? 150000
+  const turboLimitVal = settings.turbo_cash_limit ?? 300000
+  const sbLimitVal = settings.sb_cash_limit ?? 0
 
   // 1. Calculate COGS per deal
   const dealCosts: Record<string, { averageBaseCost: number, dealFeePerUnit: number, shippingCostPerUnit: number }> = {}
@@ -134,20 +135,33 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
     .filter(d => d.status !== 'CANCELLED' && d.funding_source === 'SB_CASH')
     .reduce((s, d) => s + (Number(d.cash_amount) || Number(d.total_commitment)), 0)
 
-  // 5. Repayments (Manual Outflows/Inflows)
-  const amexPayoffs = repayments.filter(r => r.source === 'AMEX_PAYOFF_SB' || r.source === 'AMEX').reduce((s, r) => s + Number(r.amount), 0)
-  const sbToAmexPayoffs = repayments.filter(r => r.source === 'AMEX_PAYOFF_SB').reduce((s, r) => s + Number(r.amount), 0)
+  // 5. Repayments (manual external transfers only — TURBO_TO_SB and SB_TO_AMEX
+  //    are now exclusively tracked in treasury_transactions, NOT here)
+  const amexPayoffs = repayments.filter(r => r.source === 'AMEX').reduce((s, r) => s + Number(r.amount), 0)
+  const sbToAmexPayoffs = 0           // now from treasury_transactions only
   const sbReplenishments = repayments.filter(r => r.source === 'SB_CASH').reduce((s, r) => s + Number(r.amount), 0)
   const turboReplenishments = repayments.filter(r => r.source === 'TURBO_CASH').reduce((s, r) => s + Number(r.amount), 0)
-  const turboToSbTransfers = repayments.filter(r => r.source === 'TURBO_TO_SB').reduce((s, r) => s + Number(r.amount), 0)
+  const turboToSbTransfers = 0        // now from treasury_transactions only
   const sbToTurboTransfers = repayments.filter(r => r.source === 'SB_TO_TURBO').reduce((s, r) => s + Number(r.amount), 0)
-
   const turboToAmexPayoffs = repayments.filter(r => r.source === 'TURBO_TO_AMEX').reduce((s, r) => s + Number(r.amount), 0)
 
-  // 6. Final Available Balances
-  const amexAvailable = amexLimitVal - amexOutflow + amexPayoffs
-  const turboAvailable = turboLimitVal - turboOutflow + principalInflow + turboReplenishments - turboToSbTransfers + sbToTurboTransfers - turboToAmexPayoffs
-  const sbAvailable = sbLimitVal - sbOutflow - sbToAmexPayoffs + sbReplenishments + turboToSbTransfers - sbToTurboTransfers
+  // 5b. Treasury single-entry settlements from treasury_transactions table
+  const treasuryTurboToSb = treasuryTransactions
+    .filter(t => t.transaction_type === 'TURBO_TO_SB' && t.status !== 'CANCELLED')
+    .reduce((s, t) => s + Number(t.amount || 0), 0)
+  const treasurySbToAmex = treasuryTransactions
+    .filter(t => t.transaction_type === 'SB_TO_AMEX' && t.status !== 'CANCELLED')
+    .reduce((s, t) => s + Number(t.amount || 0), 0)
+
+  // Combined totals (manual repayments + treasury single entries)
+  const totalTurboToSb = turboToSbTransfers + treasuryTurboToSb
+  const totalSbToAmex = sbToAmexPayoffs + treasurySbToAmex
+  const totalAmexRepayments = amexPayoffs + treasurySbToAmex
+
+  // 6. Final Available Balances (using combined treasury + manual repayment amounts)
+  const amexAvailable = amexLimitVal - amexOutflow + totalAmexRepayments
+  const turboAvailable = turboLimitVal - turboOutflow + principalInflow + turboReplenishments - totalTurboToSb + sbToTurboTransfers - turboToAmexPayoffs
+  const sbAvailable = sbLimitVal - sbOutflow - totalSbToAmex + sbReplenishments + totalTurboToSb - sbToTurboTransfers
   
   const totalAvailable = amexAvailable + turboAvailable + sbAvailable
 
@@ -346,7 +360,7 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ color: 'var(--text-muted)' }}>Repayments In</span>
-            <span style={{ fontWeight: 600, color: 'var(--accent-green)' }}>+{fmt(amexPayoffs)}</span>
+            <span style={{ fontWeight: 600, color: 'var(--accent-green)' }}>+{fmt(totalAmexRepayments)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Available Credit</span>
@@ -367,10 +381,10 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
               <span style={{ fontWeight: 600, color: 'var(--accent-green)' }}>+{fmt(sbToTurboTransfers)}</span>
             </div>
           )}
-          {turboToSbTransfers > 0 && (
+          {totalTurboToSb > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
               <span style={{ color: 'var(--text-muted)' }}>Transferred to SB</span>
-              <span style={{ fontWeight: 600, color: 'var(--accent-red)' }}>-{fmt(turboToSbTransfers)}</span>
+              <span style={{ fontWeight: 600, color: 'var(--accent-red)' }}>-{fmt(totalTurboToSb)}</span>
             </div>
           )}
           {turboToAmexPayoffs > 0 && (
@@ -400,10 +414,10 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
             <span style={{ color: 'var(--text-muted)' }}>Initial Deposit</span>
             <span style={{ fontWeight: 600 }}>{fmt(sbLimitVal)}</span>
           </div>
-          {turboToSbTransfers > 0 && (
+          {totalTurboToSb > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
               <span style={{ color: 'var(--text-muted)' }}>Transferred from Turbo</span>
-              <span style={{ fontWeight: 600, color: 'var(--accent-green)' }}>+{fmt(turboToSbTransfers)}</span>
+              <span style={{ fontWeight: 600, color: 'var(--accent-green)' }}>+{fmt(totalTurboToSb)}</span>
             </div>
           )}
           {sbToTurboTransfers > 0 && (
@@ -418,7 +432,7 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ color: 'var(--text-muted)' }}>Transfers to Amex</span>
-            <span style={{ fontWeight: 600, color: 'var(--accent-red)' }}>-{fmt(sbToAmexPayoffs)}</span>
+            <span style={{ fontWeight: 600, color: 'var(--accent-red)' }}>-{fmt(totalSbToAmex)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Available</span>
@@ -547,17 +561,104 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
                     </>
                   )
                 })()
-              ) : (
-                <tr>
-                  <td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    Ledger transactions will be listed here in chronological order.
-                  </td>
-                </tr>
-              )}
+              ) : expandedLedger === 'TURBO' ? (
+                (() => {
+                  // Build merged ledger: deal outflows + repayments + treasury entries
+                  const turboEntries: { date: string; description: string; amount: number; type: 'out' | 'in' }[] = [
+                    ...deals
+                      .filter(d => d.status !== 'CANCELLED' && (d.funding_source === 'TURBO_CASH' || d.funding_source === 'MIXED'))
+                      .map(d => ({ date: d.payment_date || d.created_at, description: `Deal Outflow: ${d.deal_number}`, amount: Number(d.cash_amount) || (d.funding_source === 'MIXED' ? Number(d.total_commitment) / 2 : Number(d.total_commitment)), type: 'out' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'TURBO_CASH').map(r => ({ date: r.created_at, description: 'External → Turbo Replenishment', amount: Number(r.amount), type: 'in' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'TURBO_TO_SB').map(r => ({ date: r.created_at, description: 'Manual: Turbo → SB Transfer', amount: Number(r.amount), type: 'out' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'TURBO_TO_AMEX').map(r => ({ date: r.created_at, description: 'Manual: Turbo → AMEX Payoff', amount: Number(r.amount), type: 'out' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'SB_TO_TURBO').map(r => ({ date: r.created_at, description: 'SB → Turbo Transfer', amount: Number(r.amount), type: 'in' as const })),
+                    ...treasuryTransactions
+                      .filter(t => t.transaction_type === 'TURBO_TO_SB' && t.status !== 'CANCELLED')
+                      .map(t => ({ date: t.transaction_date, description: `🟡 Rule 1: ${t.month_cycle} — Turbo → SB Pool (Monthly Settlement)`, amount: Number(t.amount), type: 'out' as const }))
+                  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                  
+                  return turboEntries.length === 0 ? (
+                    <tr><td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>No Turbo Pool entries found.</td></tr>
+                  ) : turboEntries.map((entry, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 8px' }}>{fmtDate(entry.date)}</td>
+                      <td style={{ padding: '12px 8px' }}>{entry.description}</td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: entry.type === 'in' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                        {entry.type === 'in' ? '+' : '-'}{fmt(entry.amount)}
+                      </td>
+                    </tr>
+                  ))
+                })()
+              ) : expandedLedger === 'SB' ? (
+                (() => {
+                  const sbEntries: { date: string; description: string; amount: number; type: 'out' | 'in' }[] = [
+                    ...deals
+                      .filter(d => d.status !== 'CANCELLED' && d.funding_source === 'SB_CASH')
+                      .map(d => ({ date: d.payment_date || d.created_at, description: `Deal Outflow: ${d.deal_number}`, amount: Number(d.cash_amount) || Number(d.total_commitment), type: 'out' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'SB_CASH').map(r => ({ date: r.created_at, description: 'External → SB Replenishment', amount: Number(r.amount), type: 'in' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'TURBO_TO_SB').map(r => ({ date: r.created_at, description: 'Manual: Turbo → SB Transfer', amount: Number(r.amount), type: 'in' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'AMEX_PAYOFF_SB').map(r => ({ date: r.created_at, description: 'Manual: SB → AMEX Payoff', amount: Number(r.amount), type: 'out' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'SB_TO_TURBO').map(r => ({ date: r.created_at, description: 'SB → Turbo Transfer', amount: Number(r.amount), type: 'out' as const })),
+                    ...treasuryTransactions
+                      .filter(t => t.transaction_type === 'TURBO_TO_SB' && t.status !== 'CANCELLED')
+                      .map(t => ({ date: t.transaction_date, description: `🟡 Rule 1: ${t.month_cycle} — Turbo → SB Pool (Monthly Settlement)`, amount: Number(t.amount), type: 'in' as const })),
+                    ...treasuryTransactions
+                      .filter(t => t.transaction_type === 'SB_TO_AMEX' && t.status !== 'CANCELLED')
+                      .map(t => ({ date: t.transaction_date, description: `🟢 Rule 2: ${t.month_cycle} — SB Pool → AMEX Payoff`, amount: Number(t.amount), type: 'out' as const }))
+                  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+                  return sbEntries.length === 0 ? (
+                    <tr><td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>No SB Pool entries found.</td></tr>
+                  ) : sbEntries.map((entry, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 8px' }}>{fmtDate(entry.date)}</td>
+                      <td style={{ padding: '12px 8px' }}>{entry.description}</td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: entry.type === 'in' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                        {entry.type === 'in' ? '+' : '-'}{fmt(entry.amount)}
+                      </td>
+                    </tr>
+                  ))
+                })()
+              ) : expandedLedger === 'AMEX' ? (
+                (() => {
+                  const amexEntries: { date: string; description: string; amount: number; type: 'out' | 'in' }[] = [
+                    ...deals
+                      .filter(d => d.status !== 'CANCELLED' && (d.funding_source === 'AMEX' || d.funding_source === 'MIXED'))
+                      .map(d => ({ date: d.payment_date || d.created_at, description: `Deal Charged: ${d.deal_number} (${d.model || ''})`, amount: Number(d.amex_amount) || (d.funding_source === 'MIXED' ? Number(d.total_commitment) / 2 : Number(d.total_commitment)), type: 'out' as const })),
+                    ...repayments
+                      .filter(r => r.source === 'AMEX' || r.source === 'AMEX_PAYOFF_SB' || r.source === 'TURBO_TO_AMEX')
+                      .map(r => ({ date: r.created_at, description: r.source === 'AMEX' ? 'External → AMEX Payment' : r.source === 'AMEX_PAYOFF_SB' ? 'SB Pool → AMEX Payoff' : 'Turbo Pool → AMEX Payoff', amount: Number(r.amount), type: 'in' as const })),
+                    ...treasuryTransactions
+                      .filter(t => t.transaction_type === 'SB_TO_AMEX' && t.status !== 'CANCELLED')
+                      .map(t => ({ date: t.transaction_date, description: `🟢 Rule 2: ${t.month_cycle} — SB Pool → AMEX Payoff (Monthly Settlement)`, amount: Number(t.amount), type: 'in' as const }))
+                  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+                  return amexEntries.length === 0 ? (
+                    <tr><td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>No AMEX ledger entries found.</td></tr>
+                  ) : amexEntries.map((entry, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 8px' }}>{fmtDate(entry.date)}</td>
+                      <td style={{ padding: '12px 8px' }}>{entry.description}</td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600, color: entry.type === 'in' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                        {entry.type === 'in' ? '+' : '-'}{fmt(entry.amount)}
+                      </td>
+                    </tr>
+                  ))
+                })()
+              ) : null}
             </tbody>
           </table>
         </div>
       )}
+
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
         

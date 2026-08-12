@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition, Fragment, useRef, useEffect } from 'react'
+import PaginationBar from '@/components/PaginationBar'
 import * as XLSX from 'xlsx'
-import { updateInventoryLocation, updateRefurbStage, deleteInventoryItem, updateInventoryItemImei, bulkUpdateInventoryItems } from '@/lib/inventory/actions'
+import { updateInventoryLocation, updateRefurbStage, deleteInventoryItem, updateInventoryItemImei, bulkUpdateInventoryItems, bulkDeleteInventoryItems } from '@/lib/inventory/actions'
 import { useRole } from '@/components/RoleProvider'
 
 const STAGES = [
@@ -26,7 +27,7 @@ function fmtS(n: number) {
 
 import { moveSkuToOnlineInventory } from '@/lib/deals/actions'
 
-export default function InventoryClient({ inventory, activeDeals = [] }: { inventory: any[], activeDeals?: any[] }) {
+export default function InventoryClient({ inventory, activeDeals = [], inventoryTotal = 0, inventoryPage = 0 }: { inventory: any[], activeDeals?: any[], inventoryTotal?: number, inventoryPage?: number }) {
   const role = useRole()
   const [isPending, startTransition] = useTransition()
   const [activeStage, setActiveStage] = useState('SEPARATED')
@@ -99,7 +100,24 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
   const selectedDeal = dealsWithAvailable.find(d => d.id === selectedDealId)
   const selectedItem = selectedDeal?.availableItems?.find((i: any) => i.id === selectedItemId)
   const maxQty = selectedItem?.availableQty || 1
-  const totalLandedCost = selectedDeal ? (selectedDeal.unit_cost + (selectedDeal.pro_rated_logistics || 0)) : 0
+
+  // Compute landed cost the same way DealDetailClient does:
+  // item.unit_cost + pro-rated (auction_fee + other_fees) / deal.quantity + pro-rated shipping
+  const totalLandedCost = (() => {
+    if (!selectedDeal || !selectedItem) return 0
+    const itemUnitCost = Number(selectedItem.unit_cost || 0)
+    const dealFeePerUnit = (selectedDeal.quantity || 0) > 0
+      ? ((Number(selectedDeal.auction_fee || 0) + Number(selectedDeal.other_fees || 0)) / selectedDeal.quantity)
+      : 0
+    const shipment = selectedDeal.shipment_deals?.[0]?.shipments
+    const totalShipmentUnits = shipment
+      ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0)
+      : 0
+    const shippingCostPerUnit = totalShipmentUnits > 0
+      ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits)
+      : 0
+    return itemUnitCost + dealFeePerUnit + shippingCostPerUnit
+  })()
 
   const filteredDealsList = dealsWithAvailable.filter(d => {
     if (!dealSearchQuery) return true
@@ -262,7 +280,7 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
     if (selectedItems.size === 0) return
     if (confirm(`Are you sure you want to delete ${selectedItems.size} items? They will be returned to their deals.`)) {
       startTransition(async () => {
-        const results = await Promise.all(Array.from(selectedItems).map(id => deleteInventoryItem(id)))
+        const results = await bulkDeleteInventoryItems(Array.from(selectedItems))
         const errors = results.filter(r => r.error).map(r => r.error)
         if (errors.length > 0) alert(`Some deletions failed: ${errors.join(', ')}`)
         setSelectedItems(new Set())
@@ -658,7 +676,28 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
                   <div className="form-group">
                     <label className="form-label">Total Landed Cost per Unit</label>
                     <input type="text" className="form-input" disabled value={`$${totalLandedCost.toFixed(3)}`} />
-                    <div className="form-help">Cost carried over from Deal (Unit Cost + Pro-rated Logistics)</div>
+                    <div className="form-help" style={{ marginTop: '6px' }}>
+                      {(() => {
+                        const itemUnitCost = Number(selectedItem?.unit_cost || 0)
+                        const dealFeePerUnit = (selectedDeal?.quantity || 0) > 0
+                          ? ((Number(selectedDeal?.auction_fee || 0) + Number(selectedDeal?.other_fees || 0)) / selectedDeal.quantity)
+                          : 0
+                        const shipment = selectedDeal?.shipment_deals?.[0]?.shipments
+                        const totalShipmentUnits = shipment
+                          ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0)
+                          : 0
+                        const shippingCostPerUnit = totalShipmentUnits > 0
+                          ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits)
+                          : 0
+                        return (
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            SKU Bid: <strong>${itemUnitCost.toFixed(3)}</strong>
+                            {' + '}Fees: <strong>${dealFeePerUnit.toFixed(3)}</strong>
+                            {' + '}Shipping: <strong>${shippingCostPerUnit.toFixed(3)}</strong>
+                          </span>
+                        )
+                      })()}
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Quantity to Move</label>
@@ -686,6 +725,7 @@ export default function InventoryClient({ inventory, activeDeals = [] }: { inven
           </div>
         </div>
       )}
+      <PaginationBar page={inventoryPage} pageSize={25} total={inventoryTotal} baseUrl="/dashboard/inventory" />
     </div>
   )
 }

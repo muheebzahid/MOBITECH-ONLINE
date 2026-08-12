@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useRef } from 'react'
+import PaginationBar from '@/components/PaginationBar'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { createOnlineOrder, bulkCreateOnlineOrders, bulkFulfillAndShipOrders, assignImeiToOrderItem, deleteOnlineOrder } from '@/lib/online-sales/actions'
@@ -10,6 +11,8 @@ interface Props {
   platform: 'AMAZON' | 'REVIBE'
   initialOrders: any[]
   readyItems: any[]
+  ordersTotal?: number
+  ordersPage?: number
 }
 
 function fmt(n: number) {
@@ -32,7 +35,7 @@ function fmtD(d: string | null | undefined) {
   return new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export default function OnlineSalesClient({ platform, initialOrders, readyItems }: Props) {
+export default function OnlineSalesClient({ platform, initialOrders, readyItems, ordersTotal = 0, ordersPage = 0 }: Props) {
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
@@ -701,6 +704,7 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems 
           </option>
         ))}
       </datalist>
+      <PaginationBar page={ordersPage} pageSize={25} total={ordersTotal} baseUrl={`/dashboard/online-sales/${platform.toLowerCase()}`} />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { getFinancialSummary } from '@/lib/accounting/actions'
+import { getTreasuryTransactions } from '@/lib/accounting/treasuryActions'
 import { getUserRole } from '@/lib/admin/actions'
 import { redirect } from 'next/navigation'
 import AccountingClient from './AccountingClient'
@@ -16,6 +17,7 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
   const statementDates = [...new Set((data || []).map(d => d.amex_statement_date).filter(Boolean))].sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
   
   const summary = await getFinancialSummary(params.statement_date, params.from_date, params.to_date)
+  const treasuryTransactions = await getTreasuryTransactions()
   
   return (
     <AccountingClient 
@@ -23,6 +25,7 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
       expenseHistory={summary.expenseHistory} 
       partners={summary.partners || []}
       partnerTransactions={summary.partnerTransactions || []}
+      treasuryTransactions={treasuryTransactions}
       statementDates={statementDates}
       selectedStatementDate={params.statement_date}
       fromDate={params.from_date}

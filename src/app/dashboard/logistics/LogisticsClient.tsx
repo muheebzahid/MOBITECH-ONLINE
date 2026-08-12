@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import PaginationBar from '@/components/PaginationBar'
 import { useRouter } from 'next/navigation'
 import { SHIPMENT_STATUSES, SHIPMENT_STATUS_ORDER, CARRIERS, type ShipmentStatus } from '@/lib/logistics/constants'
 import { createShipment, updateShipmentHandler } from '@/lib/logistics/actions'
@@ -13,9 +14,11 @@ function daysSince(d: string) { return Math.floor((Date.now() - new Date(d).getT
 interface Props {
   shipments: any[]
   unshippedDeals: any[]
+  shipmentsTotal?: number
+  shipmentsPage?: number
 }
 
-export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
+export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTotal = 0, shipmentsPage = 0 }: Props) {
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
@@ -305,6 +308,7 @@ export default function LogisticsClient({ shipments, unshippedDeals }: Props) {
           </div>
         </div>
       )}
+      <PaginationBar page={shipmentsPage} pageSize={25} total={shipmentsTotal} baseUrl="/dashboard/logistics" />
     </div>
   )
 }
