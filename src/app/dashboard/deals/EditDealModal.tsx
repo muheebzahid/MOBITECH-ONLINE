@@ -144,6 +144,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (role === 'VIEW_ONLY') return
     setError('')
     setSuccess('')
     const fd = new FormData(e.currentTarget)
@@ -193,6 +194,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
+          <fieldset disabled={role === 'VIEW_ONLY'} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
 
           {/* Section: Deal Identity & Platform */}
           <div className="form-section">
@@ -427,7 +429,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
           </div>
 
           {error   && <div className="login-error">⚠ {error}</div>}
-          {success && <div className="edit-success">✓ {success}</div>}
+          {success && <div className="edit-success">✓ {success}</div>}          </fieldset>
 
           {/* Actions */}
           <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
@@ -440,9 +442,11 @@ export default function EditDealModal({ deal, onClose }: Props) {
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={isPending} id="save-edit-btn">
-                {isPending ? 'Saving...' : '✓ Save Changes'}
-              </button>
+              {role !== 'VIEW_ONLY' && (
+                <button type="submit" className="btn-primary" disabled={isPending} id="save-edit-btn">
+                  {isPending ? 'Saving...' : '✓ Save Changes'}
+                </button>
+              )}
             </div>
           </div>
         </form>

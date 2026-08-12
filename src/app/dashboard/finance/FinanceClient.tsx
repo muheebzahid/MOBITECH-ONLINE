@@ -285,17 +285,19 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
           <h1 className="page-title">Treasury Control</h1>
           <p className="page-sub">Manage global limits, wire transfers, capital repayments, and inter-pool transfers.</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button className="btn-ghost" style={{ border: '1px solid var(--border)' }} onClick={() => setShowSettingsModal(true)}>
-            ⚙️ Edit Limits
-          </button>
-          <button className="btn-primary" style={{ background: 'var(--accent-purple)' }} onClick={() => openWireModal()}>
-            💸 Log Outbound Wire
-          </button>
-          <button className="btn-primary" style={{ background: 'var(--accent-green)', color: '#000' }} onClick={() => openRepayModal()}>
-            🏦 Log Transfer & Repayment
-          </button>
-        </div>
+        {userRole !== 'VIEW_ONLY' && (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button className="btn-ghost" style={{ border: '1px solid var(--border)' }} onClick={() => setShowSettingsModal(true)}>
+              ⚙️ Edit Limits
+            </button>
+            <button className="btn-primary" style={{ background: 'var(--accent-purple)' }} onClick={() => openWireModal()}>
+              💸 Log Outbound Wire
+            </button>
+            <button className="btn-primary" style={{ background: 'var(--accent-green)', color: '#000' }} onClick={() => openRepayModal()}>
+              🏦 Log Transfer & Repayment
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', background: 'var(--card-bg)', padding: '16px 24px', borderRadius: '8px', border: '1px solid var(--border)' }}>

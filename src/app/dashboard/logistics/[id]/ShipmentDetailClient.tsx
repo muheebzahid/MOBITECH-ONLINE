@@ -191,8 +191,10 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
               🗑 Delete
             </button>
           )}
-          <button className="btn-ghost" onClick={() => setShowEdit(true)}>Edit Details</button>
-          {nextStatus && (
+          {role !== 'VIEW_ONLY' && (
+            <button className="btn-ghost" onClick={() => setShowEdit(true)}>Edit Details</button>
+          )}
+          {nextStatus && role !== 'VIEW_ONLY' && (
             <button className="btn-advance" onClick={() => setShowAdvance(true)}>
               Advance &rarr; {st(nextStatus)?.label}
             </button>
@@ -277,7 +279,7 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
         <div className="deal-info-panel" style={{height:'fit-content'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
             <div className="panel-title" style={{marginBottom:0}}>Documents &amp; Photos</div>
-            {role !== 'FINANCE' && (
+            {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
               <label className="btn-ghost" style={{padding:'4px 12px',fontSize:'0.85rem',cursor:'pointer'}}>
                 Upload
                 <input 
@@ -299,7 +301,7 @@ export default function ShipmentDetailClient({ shipment, unshippedDeals }: Props
                   <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{fontSize:'13px', color:'var(--accent-indigo)', fontWeight:500, textDecoration:'none'}} className="deal-number-link">
                     {doc.name}
                   </a>
-                  {role !== 'FINANCE' && (
+                  {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
                     <button 
                       onClick={() => handleRemoveDoc(doc.id, doc.file_url)} 
                       style={{background:'none', border:'none', color:'var(--accent-rose)', cursor:'pointer', fontSize:'13px', padding:'2px 6px'}}

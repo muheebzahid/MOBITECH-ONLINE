@@ -138,45 +138,47 @@ export default function TreasuryControlSection({ initialTransactions, currency, 
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={handleAutoGenerate}
-            disabled={isGenerating}
-            style={{
-              padding: '10px 18px',
-              fontSize: '13px',
-              fontWeight: 700,
-              background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '10px',
-              cursor: isGenerating ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
-            }}
-          >
-            <span>⚡</span>
-            {isGenerating ? 'Calculating Deals...' : 'Auto-Generate Monthly Entries from Deals'}
-          </button>
+        {userRole !== 'VIEW_ONLY' && (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={handleAutoGenerate}
+              disabled={isGenerating}
+              style={{
+                padding: '10px 18px',
+                fontSize: '13px',
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
+              }}
+            >
+              <span>⚡</span>
+              {isGenerating ? 'Calculating Deals...' : 'Auto-Generate Monthly Entries from Deals'}
+            </button>
 
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              padding: '10px 18px',
-              fontSize: '13px',
-              fontWeight: 700,
-              background: 'var(--bg-elevated)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              cursor: 'pointer'
-            }}
-          >
-            + Add Single Entry
-          </button>
-        </div>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                padding: '10px 18px',
+                fontSize: '13px',
+                fontWeight: 700,
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: '10px',
+                cursor: 'pointer'
+              }}
+            >
+              + Add Single Entry
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Overview Cards */}

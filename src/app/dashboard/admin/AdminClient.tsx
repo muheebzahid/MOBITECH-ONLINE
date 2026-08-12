@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { updateUserRole, addMember, deleteMember } from '@/lib/admin/actions'
 import { generateOnlineBackup } from '@/lib/backup/actions'
 import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
+import { useRole } from '@/components/RoleProvider'
 
 interface Props {
   users: any[]
@@ -15,6 +16,7 @@ function fmtDate(d: string) {
 }
 
 export default function AdminClient({ users }: Props) {
+  const currentRole = useRole()
   const [isPending, startTransition] = useTransition()
   const [isBackupPending, startBackupTransition] = useTransition()
 
@@ -46,6 +48,7 @@ export default function AdminClient({ users }: Props) {
   }
 
   const handleBackup = () => {
+    if (currentRole === 'VIEW_ONLY') return
     startBackupTransition(async () => {
       const res = await generateOnlineBackup()
       if (res.error) {
@@ -75,12 +78,14 @@ export default function AdminClient({ users }: Props) {
   const [memberToRemove, setMemberToRemove] = useState<any>(null)
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    if (currentRole === 'VIEW_ONLY') return
     startTransition(async () => {
       await updateUserRole(userId, newRole as any)
     })
   }
 
   const confirmDeleteMember = async () => {
+    if (currentRole === 'VIEW_ONLY') return
     if (!memberToRemove) return
     startTransition(async () => {
       const res = await deleteMember(memberToRemove.user_id)
@@ -95,6 +100,7 @@ export default function AdminClient({ users }: Props) {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (currentRole === 'VIEW_ONLY') return
     setAddError('')
     startTransition(async () => {
       const fd = new FormData()
@@ -254,7 +260,7 @@ export default function AdminClient({ users }: Props) {
                     Unsynced & Desynced Items for Module: <span style={{ color: '#60a5fa', textTransform: 'uppercase' }}>{activeModuleTab}</span>
                   </h4>
 
-                  {auditData.unsynced_deal_ids?.length > 0 && (
+                  {auditData.unsynced_deal_ids?.length > 0 && currentRole !== 'VIEW_ONLY' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button
                         onClick={toggleSelectAllDeals}
@@ -313,7 +319,7 @@ export default function AdminClient({ users }: Props) {
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => toggleSelectDeal(dealId)}
-                                  disabled={activeModuleTab !== 'deals'}
+                                  disabled={activeModuleTab !== 'deals' || currentRole === 'VIEW_ONLY'}
                                 />
                               </td>
                               <td style={{ padding: '10px 8px', fontWeight: 600, color: '#f8fafc' }}>
@@ -373,9 +379,11 @@ export default function AdminClient({ users }: Props) {
           <div className="panel" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Team Members</h2>
-              <button className="btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
-                + Add Member
-              </button>
+              {currentRole !== 'VIEW_ONLY' && (
+                <button className="btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
+                  + Add Member
+                </button>
+              )}
             </div>
             
             {showAddForm && (
@@ -435,7 +443,7 @@ export default function AdminClient({ users }: Props) {
                       style={{ width: 'auto', padding: '6px 12px', height: 'auto' }}
                       value={u.role}
                       onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                      disabled={isPending || u.email === 'muheebzahid@gmail.com'}
+                      disabled={isPending || u.email === 'muheebzahid@gmail.com' || currentRole === 'VIEW_ONLY'}
                     >
                       <option value="SUPER_ADMIN">Super Admin</option>
                       <option value="SALES">Sales</option>
@@ -443,7 +451,7 @@ export default function AdminClient({ users }: Props) {
                       <option value="FINANCE">Finance</option>
                       <option value="VIEW_ONLY">View Only</option>
                     </select>
-                    {u.email !== 'muheebzahid@gmail.com' && (
+                    {u.email !== 'muheebzahid@gmail.com' && currentRole !== 'VIEW_ONLY' && (
                       <button 
                         onClick={() => setMemberToRemove(u)}
                         disabled={isPending}
@@ -492,7 +500,7 @@ export default function AdminClient({ users }: Props) {
             
             <button 
               onClick={handleBackup} 
-              disabled={isBackupPending}
+              disabled={isBackupPending || currentRole === 'VIEW_ONLY'}
               className="btn-primary" 
               style={{ 
                 width: '100%', 

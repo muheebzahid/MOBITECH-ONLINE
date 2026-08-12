@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getClientImpactAnalysis, deleteClientAccount } from '@/lib/clients/actions'
+import { useRole } from '@/components/RoleProvider'
 
 function fmtS(n: number) {
   const parts = Number(n || 0).toString().split('.')
@@ -24,6 +25,7 @@ function fmtD(d: string|null|undefined) { if(!d) return '-'; return new Date(d).
 
 export default function ClientDetailClient({ client }: { client: any }) {
   const router = useRouter()
+  const role = useRole()
   const invoices = client.invoices || []
   const [isPending, startTransition] = useTransition()
   
@@ -87,27 +89,29 @@ export default function ClientDetailClient({ client }: { client: any }) {
           </div>
         </div>
 
-        <button
-          onClick={handleOpenDeleteModal}
-          disabled={isLoadingImpact || isPending}
-          className="btn-danger"
-          style={{
-            padding: '10px 18px',
-            fontSize: '13px',
-            fontWeight: 700,
-            background: 'rgba(239, 68, 68, 0.15)',
-            color: '#f87171',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
-          <span>🗑</span>
-          {isLoadingImpact ? 'Auditing Impact...' : 'Delete Client Account'}
-        </button>
+        {role !== 'VIEW_ONLY' && (
+          <button
+            onClick={handleOpenDeleteModal}
+            disabled={isLoadingImpact || isPending}
+            className="btn-danger"
+            style={{
+              padding: '10px 18px',
+              fontSize: '13px',
+              fontWeight: 700,
+              background: 'rgba(239, 68, 68, 0.15)',
+              color: '#f87171',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>🗑</span>
+            {isLoadingImpact ? 'Auditing Impact...' : 'Delete Client Account'}
+          </button>
+        )}
       </div>
 
       {/* Summary Metrics Grid */}

@@ -304,9 +304,11 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
           <h1 className="page-title">Refurbishment Pipeline</h1>
           <p className="page-subtitle">Track IMEI refurbishment, repair costs, and QC</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-          + Add Inventory
-        </button>
+        {role !== 'VIEW_ONLY' && (
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            + Add Inventory
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>
@@ -341,21 +343,26 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
         {selectedItems.size > 0 && (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-hover)', padding: '4px 12px', borderRadius: '4px' }}>
             <span style={{ fontSize: '14px', fontWeight: 500, marginRight: '8px' }}>{selectedItems.size} selected</span>
-            {activeStage === 'SEPARATED' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('HANDED_TO_REFURBISH')}>Hand to Refurbish</button>}
-            {activeStage === 'HANDED_TO_REFURBISH' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('QC_DONE')}>Mark QC Done</button>}
-            {activeStage === 'QC_DONE' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('READY_TO_SELL')}>Ready to Sell</button>}
+            {activeStage === 'SEPARATED' && role !== 'VIEW_ONLY' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('HANDED_TO_REFURBISH')}>Hand to Refurbish</button>}
+            {activeStage === 'HANDED_TO_REFURBISH' && role !== 'VIEW_ONLY' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('QC_DONE')}>Mark QC Done</button>}
+            {activeStage === 'QC_DONE' && role !== 'VIEW_ONLY' && <button className="btn-primary" style={{padding: '4px 12px'}} onClick={() => handleBulkMove('READY_TO_SELL')}>Ready to Sell</button>}
             
             <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 8px' }}></div>
             
             <button className="btn-ghost" style={{padding: '4px 12px', border: '1px solid var(--border)'}} onClick={handleExportExcel}>Export Excel</button>
-            <input type="file" accept=".xlsx, .xls" style={{display: 'none'}} ref={fileInputRef} onChange={handleImportExcel} />
-            <button className="btn-ghost" style={{padding: '4px 12px', border: '1px solid var(--border)'}} onClick={() => fileInputRef.current?.click()} disabled={isPending}>
-              {isPending ? 'Importing...' : 'Import Excel'}
-            </button>
             
-            <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 8px' }}></div>
+            {role !== 'VIEW_ONLY' && (
+              <>
+                <input type="file" accept=".xlsx, .xls" style={{display: 'none'}} ref={fileInputRef} onChange={handleImportExcel} />
+                <button className="btn-ghost" style={{padding: '4px 12px', border: '1px solid var(--border)'}} onClick={() => fileInputRef.current?.click()} disabled={isPending}>
+                  {isPending ? 'Importing...' : 'Import Excel'}
+                </button>
+                
+                <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 8px' }}></div>
 
-            <button className="btn-ghost" style={{padding: '4px 12px', color: 'var(--status-red)'}} onClick={handleBulkDelete}>Delete Selected</button>
+                <button className="btn-ghost" style={{padding: '4px 12px', color: 'var(--status-red)'}} onClick={handleBulkDelete}>Delete Selected</button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -423,13 +430,15 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <div style={{fontWeight:600}}>{item.imei || item.serial_number || 'N/A'}</div>
-                          <button 
-                            className="btn-ghost" 
-                            style={{ padding: 0, fontSize: '11px', color: 'var(--accent-indigo)' }} 
-                            onClick={() => { setEditingImeiId(item.id); setEditImeiValue(item.imei || item.serial_number || ''); }}
-                          >
-                            Edit
-                          </button>
+                          {role !== 'VIEW_ONLY' && (
+                            <button 
+                              className="btn-ghost" 
+                              style={{ padding: 0, fontSize: '11px', color: 'var(--accent-indigo)' }} 
+                              onClick={() => { setEditingImeiId(item.id); setEditImeiValue(item.imei || item.serial_number || ''); }}
+                            >
+                              Edit
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -447,7 +456,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                       ) : (
                         <div style={{display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'8px'}}>
                           {fmtS(item.repair_cost)}
-                          {activeStage === 'HANDED_TO_REFURBISH' && (
+                          {activeStage === 'HANDED_TO_REFURBISH' && role !== 'VIEW_ONLY' && (
                             <button className="btn-ghost" style={{padding:'2px 6px'}} onClick={()=>{setEditingRepair(item.id); setRepairCost(item.repair_cost)}}>✎</button>
                           )}
                         </div>
@@ -463,7 +472,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                       ) : (
                         <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
                           {item.qc_document_url ? <a href={item.qc_document_url} target="_blank" rel="noreferrer" style={{color:'var(--accent-blue)', fontSize:'12px'}}>View Doc</a> : <span style={{color:'var(--text-muted)', fontSize:'12px'}}>No doc</span>}
-                          {activeStage === 'QC_DONE' && (
+                          {activeStage === 'QC_DONE' && role !== 'VIEW_ONLY' && (
                             <button className="btn-ghost" style={{padding:'2px 6px'}} onClick={()=>{setEditingQc(item.id); setQcDoc(item.qc_document_url||'')}}>✎</button>
                           )}
                         </div>
@@ -471,19 +480,19 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {activeStage === 'SEPARATED' && <button className="btn-primary" onClick={()=>handleMoveStage(item.id, 'HANDED_TO_REFURBISH')}>Hand to Refurbish</button>}
+                        {activeStage === 'SEPARATED' && role !== 'VIEW_ONLY' && <button className="btn-primary" onClick={()=>handleMoveStage(item.id, 'HANDED_TO_REFURBISH')}>Hand to Refurbish</button>}
                         
                         {activeStage === 'HANDED_TO_REFURBISH' && (
                           <>
-                            <button className="btn-ghost" title="Move back to Separated" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'SEPARATED')}>↶</button>
-                            <button className="btn-primary" onClick={()=>handleMoveStage(item.id, 'QC_DONE')}>Mark QC Done</button>
+                            {role !== 'VIEW_ONLY' && <button className="btn-ghost" title="Move back to Separated" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'SEPARATED')}>↶</button>}
+                            {role !== 'VIEW_ONLY' && <button className="btn-primary" onClick={()=>handleMoveStage(item.id, 'QC_DONE')}>Mark QC Done</button>}
                           </>
                         )}
                         
                         {activeStage === 'QC_DONE' && (
                           <>
-                            <button className="btn-ghost" title="Move back to Refurbishing" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'HANDED_TO_REFURBISH')}>↶</button>
-                            <button className="btn-primary" disabled={!item.qc_document_url} onClick={()=>handleMoveStage(item.id, 'READY_TO_SELL')}>Ready to Sell</button>
+                            {role !== 'VIEW_ONLY' && <button className="btn-ghost" title="Move back to Refurbishing" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'HANDED_TO_REFURBISH')}>↶</button>}
+                            {role !== 'VIEW_ONLY' && <button className="btn-primary" disabled={!item.qc_document_url} onClick={()=>handleMoveStage(item.id, 'READY_TO_SELL')}>Ready to Sell</button>}
                           </>
                         )}
 
@@ -495,19 +504,21 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
 
                         {activeStage === 'READY_TO_SELL' && (
                           <>
-                            <button className="btn-ghost" title="Move back to QC Done" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'QC_DONE')}>↶</button>
+                            {role !== 'VIEW_ONLY' && <button className="btn-ghost" title="Move back to QC Done" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'QC_DONE')}>↶</button>}
                             <span className="status-badge badge-green">Ready</span>
                           </>
                         )}
                         
-                        <button 
-                          className="btn-ghost" 
-                          title="Delete Unit" 
-                          style={{padding:'4px 8px', color: 'var(--status-red)'}} 
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          🗑
-                        </button>
+                        {role !== 'VIEW_ONLY' && (
+                          <button 
+                            className="btn-ghost" 
+                            title="Delete Unit" 
+                            style={{padding:'4px 8px', color: 'var(--status-red)'}} 
+                            onClick={() => handleDelete(item.id)}
+                          >
+                            🗑
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -406,27 +406,29 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
           <p className="dh-sub">{invoice.customer_name} &middot; Issued: {fmtD(invoice.issue_date)}</p>
         </div>
         <div className="dh-actions">
-          <button
-            className="btn-primary"
-            onClick={() => {
-              const dIds = Array.from(new Set((invoice.invoice_line_items || []).map((i: any) => i.deal_id).filter(Boolean)))
-              if (dIds.length === 0) {
-                alert('This invoice has no linked deal package to sync. Please link a deal line item first.')
-                return
-              }
-              setSyncDealIds(dIds as string[])
-              setShowSyncModal(true)
-            }}
-            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            ⚡ Update Live Cloud
-          </button>
+          {role !== 'VIEW_ONLY' && (
+            <button
+              className="btn-primary"
+              onClick={() => {
+                const dIds = Array.from(new Set((invoice.invoice_line_items || []).map((i: any) => i.deal_id).filter(Boolean)))
+                if (dIds.length === 0) {
+                  alert('This invoice has no linked deal package to sync. Please link a deal line item first.')
+                  return
+                }
+                setSyncDealIds(dIds as string[])
+                setShowSyncModal(true)
+              }}
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              ⚡ Update Live Cloud
+            </button>
+          )}
           {role === 'SUPER_ADMIN' && (
             <button className="btn-ghost" style={{ color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }} onClick={handleDeleteInvoice} disabled={isPending}>
               🗑 Delete
             </button>
           )}
-          {invoice.status === 'DRAFT' && (
+          {invoice.status === 'DRAFT' && role !== 'VIEW_ONLY' && (
             <button className="btn-primary" onClick={handleIssue} disabled={isPending}>Issue Invoice</button>
           )}
           {['ISSUED', 'PARTIAL', 'PAID'].includes(invoice.status) && (
@@ -439,7 +441,7 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
               setTimeout(() => { document.title = oldTitle; }, 1000);
             }} style={{ border: '1px solid var(--border)' }}>Download PDF</button>
           )}
-          {['ISSUED', 'PARTIAL'].includes(invoice.status) && (
+          {['ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
             <button className="btn-primary" onClick={() => {
               setPayForm(f => ({ ...f, amount: invoice.balance_due.toString() }))
               setShowPayment(true)
@@ -601,12 +603,12 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                     <td style={{textAlign:'right'}}>{item.quantity}</td>
                     <td style={{textAlign:'right'}}>{fmt(item.unit_price)}</td>
                     <td style={{textAlign:'right', paddingRight:0, fontWeight:600}}>{fmt(item.total_price)}</td>
-                    {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && (
+                    {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
                       <td style={{width:'30px'}} className="no-print"><button className="btn-ghost" style={{color:'#f87171', padding:'4px 8px'}} onClick={()=>handleRemoveLineItem(item.id)}>✕</button></td>
                     )}
                   </tr>
                 ))}
-                {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && (
+                {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
                   <tr className="no-print">
                     <td colSpan={5} style={{paddingLeft:0}}>
                       <button className="btn-ghost" style={{fontSize:'12px', padding:'6px 12px', color:'var(--accent-indigo)'}} onClick={()=>setShowLineItem(true)}>+ Add Line Item</button>
@@ -666,6 +668,10 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                    <button className="btn-ghost" style={{ color: 'var(--accent-red)', padding: '8px 16px', fontSize: '12px' }} onClick={handleRemovePdf}>Remove</button>
                  )}
                </div>
+            ) : role === 'VIEW_ONLY' ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                No PDF document attached.
+              </div>
             ) : (
                <div
                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}

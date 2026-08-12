@@ -147,7 +147,9 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
               return <option key={val} value={val}>{label}</option>
             })}
           </select>
-          <button className="btn-primary" onClick={() => setShowNew(true)}>+ New Invoice</button>
+          {role !== 'VIEW_ONLY' && (
+            <button className="btn-primary" onClick={() => setShowNew(true)}>+ New Invoice</button>
+          )}
         </div>
       </div>
 

@@ -69,7 +69,7 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
           <h1 className="page-title">Logistics</h1>
           <p className="page-subtitle">Track every shipment from Miami to Mobitech warehouse</p>
         </div>
-        {role !== 'FINANCE' && (
+        {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
           <button className="btn-primary" onClick={() => setShowCreate(true)} id="new-shipment-btn">
             + New Shipment
           </button>

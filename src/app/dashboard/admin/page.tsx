@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
   const role = await getUserRole()
-  if (role !== 'SUPER_ADMIN') {
+  if (role !== 'SUPER_ADMIN' && role !== 'VIEW_ONLY') {
     redirect('/dashboard')
   }
 

@@ -188,9 +188,14 @@ export async function getProcurementForecast() {
     node.invoicedSold += (li.quantity || 0)
     node.invoicedRevenue += (li.quantity || 0) * Number(li.unit_price || 0)
 
-    const issueDate = new Date(li.invoices.issue_date).getTime()
-    if (!node.earliestSale || issueDate < node.earliestSale) {
-      node.earliestSale = issueDate
+    const inv = Array.isArray(li.invoices) ? li.invoices[0] : (li.invoices as any)
+    if (inv && inv.issue_date) {
+      const issueDate = new Date(inv.issue_date).getTime()
+      if (!isNaN(issueDate)) {
+        if (!node.earliestSale || issueDate < node.earliestSale) {
+          node.earliestSale = issueDate
+        }
+      }
     }
   })
 

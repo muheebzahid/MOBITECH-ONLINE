@@ -292,22 +292,26 @@ export default function AccountingClient({
               AED
             </button>
           </div>
-          <button
-            className="btn-primary"
-            onClick={handleSyncExpensesLive}
-            disabled={isSyncingExpenses}
-            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <span>⚡</span>
-            {isSyncingExpenses ? 'Syncing Expenses Live...' : 'Sync Expenses Live to Cloud'}
-          </button>
-          <button className="btn-primary" onClick={() => {
-            resetForm()
-            setEditingExpense(null)
-            setShowExpenseModal(true)
-          }}>
-            + Log Expense
-          </button>
+          {userRole !== 'VIEW_ONLY' && (
+            <>
+              <button
+                className="btn-primary"
+                onClick={handleSyncExpensesLive}
+                disabled={isSyncingExpenses}
+                style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <span>⚡</span>
+                {isSyncingExpenses ? 'Syncing Expenses Live...' : 'Sync Expenses Live to Cloud'}
+              </button>
+              <button className="btn-primary" onClick={() => {
+                resetForm()
+                setEditingExpense(null)
+                setShowExpenseModal(true)
+              }}>
+                + Log Expense
+              </button>
+            </>
+          )}
         </div>
       </div>
 

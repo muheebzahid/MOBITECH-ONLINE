@@ -558,8 +558,10 @@ export default function DealDetailClient({ deal }: Props) {
           <p className="dh-sub">{deal.model} &middot; {[deal.storage,deal.grade,deal.carrier,deal.color].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="dh-actions">
-          <button className="btn-ghost" onClick={()=>setShowEdit(true)}>Edit Deal</button>
-          {defaultNextStatus && !isClosed && (
+          {role !== 'VIEW_ONLY' && (
+            <button className="btn-ghost" onClick={()=>setShowEdit(true)}>Edit Deal</button>
+          )}
+          {defaultNextStatus && !isClosed && role !== 'VIEW_ONLY' && (
             <button className="btn-advance" onClick={()=>{ setTargetStatus(defaultNextStatus); setShowAdvance(true); }}>
               Advance &rarr; {st(defaultNextStatus)?.label}
             </button>
@@ -749,7 +751,7 @@ export default function DealDetailClient({ deal }: Props) {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
             <div className="panel-title" style={{marginBottom:0}}>Inventory Units</div>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {role !== 'FINANCE' && (
+              {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
                 <button className="btn-ghost" style={{fontSize:'12px', color:'var(--text-muted)'}} onClick={()=>setShowInventoryModal(true)}>
                   Import Excel
                 </button>
@@ -817,7 +819,7 @@ export default function DealDetailClient({ deal }: Props) {
                         <td style={{textAlign:'right', fontWeight:600}}>{fmt(item.target_price)}</td>
                         <td style={{textAlign:'right', fontWeight: 600, color: availQty === 0 ? 'var(--text-muted)' : 'inherit'}}>{availQty}</td>
                         <td style={{textAlign:'right'}}>
-                          {availQty > 0 && (
+                          {availQty > 0 && role !== 'VIEW_ONLY' && (
                             <button 
                               className="btn-ghost" 
                               style={{fontSize: '11px', padding: '4px 8px'}}
@@ -1166,14 +1168,16 @@ export default function DealDetailClient({ deal }: Props) {
                 style={{ display: 'none' }} 
                 onChange={handleDocUpload}
               />
-              <button 
-                className="btn-primary" 
-                style={{ padding: '4px 8px', fontSize: '11px', height: 'auto' }}
-                onClick={() => docInputRef.current?.click()}
-                disabled={docUploadPending}
-              >
-                {docUploadPending ? 'Uploading...' : '+ Add Document'}
-              </button>
+              {role !== 'VIEW_ONLY' && (
+                <button 
+                  className="btn-primary" 
+                  style={{ padding: '4px 8px', fontSize: '11px', height: 'auto' }}
+                  onClick={() => docInputRef.current?.click()}
+                  disabled={docUploadPending}
+                >
+                  {docUploadPending ? 'Uploading...' : '+ Add Document'}
+                </button>
+              )}
             </div>
           </div>
           

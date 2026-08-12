@@ -510,7 +510,7 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
           <h1 className="page-title">Deals</h1>
           <p className="page-sub">Track every auction purchase from win to settlement</p>
         </div>
-        {role !== 'FINANCE' && (
+        {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
           <div style={{ display: 'flex', gap: '12px' }}>
             <input 
               type="file" 
@@ -1109,7 +1109,9 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
               ⚡ Update Live
             </button>
           )}
-          <button className="btn-primary" onClick={() => setShowBulkAdvance(true)}>Change Status</button>
+          {role !== 'VIEW_ONLY' && (
+            <button className="btn-primary" onClick={() => setShowBulkAdvance(true)}>Change Status</button>
+          )}
           <button className="btn-ghost" onClick={()=>setSelectedDealIds([])}>Cancel</button>
         </div>
       )}

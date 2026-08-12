@@ -187,26 +187,27 @@ export default function OnlineOrderDetailClient({ order }: Props) {
         {/* Right Side: Status transitions & IMEI assignment */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          {/* Status Panel */}
-          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-            <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600 }}>Update Order Status</h4>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <select 
-                className="form-input" 
-                style={{ flex: 1, fontSize: '13px', padding: '6px 10px' }}
-                value={statusVal}
-                onChange={e => setStatusVal(e.target.value)}
-              >
-                <option value="PENDING">PENDING</option>
-                <option value="SHIPPED">SHIPPED</option>
-                <option value="DELIVERED">DELIVERED</option>
-                <option value="CANCELLED">CANCELLED</option>
-              </select>
-              <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={handleUpdateStatus} disabled={isPending}>
-                Save
-              </button>
+          {role !== 'VIEW_ONLY' && (
+            <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600 }}>Update Order Status</h4>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select 
+                  className="form-input" 
+                  style={{ flex: 1, fontSize: '13px', padding: '6px 10px' }}
+                  value={statusVal}
+                  onChange={e => setStatusVal(e.target.value)}
+                >
+                  <option value="PENDING">PENDING</option>
+                  <option value="SHIPPED">SHIPPED</option>
+                  <option value="DELIVERED">DELIVERED</option>
+                  <option value="CANCELLED">CANCELLED</option>
+                </select>
+                <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={handleUpdateStatus} disabled={isPending}>
+                  Save
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* IMEI Assignment for every SKU */}
           <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
@@ -235,7 +236,7 @@ export default function OnlineOrderDetailClient({ order }: Props) {
                     </div>
 
                     {/* Scan Input */}
-                    {!isComplete && (
+                    {!isComplete && role !== 'VIEW_ONLY' && (
                       <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                         <input 
                           type="text" 
@@ -275,13 +276,15 @@ export default function OnlineOrderDetailClient({ order }: Props) {
                             >
                               {ii.imei || ii.serial_number}
                             </Link>
-                            <button 
-                              style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
-                              onClick={() => handleRemoveImei(ii.id)}
-                              disabled={isPending}
-                            >
-                              Remove
-                            </button>
+                            {role !== 'VIEW_ONLY' && (
+                              <button 
+                                style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                                onClick={() => handleRemoveImei(ii.id)}
+                                disabled={isPending}
+                              >
+                                Remove
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
