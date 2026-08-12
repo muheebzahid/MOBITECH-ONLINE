@@ -1167,7 +1167,6 @@ input[type="checkbox"]:checked::before {
 .erp-root[data-role="VIEW_ONLY"] button.btn-edit,
 .erp-root[data-role="VIEW_ONLY"] button.btn-advance,
 .erp-root[data-role="VIEW_ONLY"] button.btn-danger,
-.erp-root[data-role="VIEW_ONLY"] button.btn-ghost:not(.download-btn),
 .erp-root[data-role="VIEW_ONLY"] .delete-btn,
 .erp-root[data-role="VIEW_ONLY"] .remove-btn,
 .erp-root[data-role="VIEW_ONLY"] input[type="file"],
@@ -1176,15 +1175,15 @@ input[type="checkbox"]:checked::before {
   display: none !important;
 }
 
-.erp-root[data-role="VIEW_ONLY"] input:not([type="search"]),
-.erp-root[data-role="VIEW_ONLY"] select,
 .erp-root[data-role="VIEW_ONLY"] textarea {
   pointer-events: none !important;
   background-color: var(--bg-surface) !important;
   opacity: 0.8 !important;
 }
 
-.erp-root[data-role="VIEW_ONLY"] input[type="search"] {
+/* Ensure all filters, tab selections, dates, and search inputs are interactive for VIEW_ONLY role */
+.erp-root[data-role="VIEW_ONLY"] input,
+.erp-root[data-role="VIEW_ONLY"] select {
   pointer-events: auto !important;
   opacity: 1 !important;
 }
