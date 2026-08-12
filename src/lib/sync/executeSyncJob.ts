@@ -187,6 +187,69 @@ export async function executeSyncJob(input: { dealIds: string[]; userRole?: stri
     records: payloadRecords
   }
 
+  // 4.8 Clean up deleted/orphaned records online (payments, line items, documents, deal items, shipment links)
+  try {
+    // A. Payments & Invoice Line Items
+    if (pkg.invoices && pkg.invoices.length > 0) {
+      const invoiceIds = pkg.invoices.map((inv: any) => inv.id);
+      
+      // payments
+      const localPaymentIds = (pkg.payments || []).map((p: any) => p.id).filter(Boolean);
+      let pQuery = onlineSupabase.from('payments').delete().in('invoice_id', invoiceIds);
+      if (localPaymentIds.length > 0) {
+        pQuery = pQuery.not('id', 'in', `(${localPaymentIds.join(',')})`);
+      }
+      const { error: pDelErr } = await pQuery;
+      if (pDelErr) console.error("Sync warning: failed to delete orphaned online payments:", pDelErr);
+
+      // invoice_line_items
+      const localLiIds = (pkg.invoice_line_items || []).map((li: any) => li.id).filter(Boolean);
+      let liQuery = onlineSupabase.from('invoice_line_items').delete().in('invoice_id', invoiceIds);
+      if (localLiIds.length > 0) {
+        liQuery = liQuery.not('id', 'in', `(${localLiIds.join(',')})`);
+      }
+      const { error: liDelErr } = await liQuery;
+      if (liDelErr) console.error("Sync warning: failed to delete orphaned online invoice line items:", liDelErr);
+    }
+
+    // B. Shipment Documents
+    if (pkg.shipments && pkg.shipments.length > 0) {
+      const shipmentIds = pkg.shipments.map((s: any) => s.id);
+      const localDocIds = (pkg.shipment_documents || []).map((doc: any) => doc.id).filter(Boolean);
+      let docQuery = onlineSupabase.from('shipment_documents').delete().in('shipment_id', shipmentIds);
+      if (localDocIds.length > 0) {
+        docQuery = docQuery.not('id', 'in', `(${localDocIds.join(',')})`);
+      }
+      const { error: docDelErr } = await docQuery;
+      if (docDelErr) console.error("Sync warning: failed to delete orphaned online shipment documents:", docDelErr);
+    }
+
+    // C. Deal Items & Shipment Deals
+    if (pkg.deals && pkg.deals.length > 0) {
+      const dealIdsForDel = pkg.deals.map((d: any) => d.id);
+      
+      // deal_items
+      const localDealItemIds = (pkg.deal_items || []).map((di: any) => di.id).filter(Boolean);
+      let diQuery = onlineSupabase.from('deal_items').delete().in('deal_id', dealIdsForDel);
+      if (localDealItemIds.length > 0) {
+        diQuery = diQuery.not('id', 'in', `(${localDealItemIds.join(',')})`);
+      }
+      const { error: diDelErr } = await diQuery;
+      if (diDelErr) console.error("Sync warning: failed to delete orphaned online deal items:", diDelErr);
+
+      // shipment_deals
+      const localShipmentDealIds = (pkg.shipment_deals || []).map((sd: any) => sd.id).filter(Boolean);
+      let sdQuery = onlineSupabase.from('shipment_deals').delete().in('deal_id', dealIdsForDel);
+      if (localShipmentDealIds.length > 0) {
+        sdQuery = sdQuery.not('id', 'in', `(${localShipmentDealIds.join(',')})`);
+      }
+      const { error: sdDelErr } = await sdQuery;
+      if (sdDelErr) console.error("Sync warning: failed to delete orphaned online shipment-deal relations:", sdDelErr);
+    }
+  } catch (cleanErr) {
+    console.error("Sync warning: failed during online clean-up phase:", cleanErr);
+  }
+
   // 5. Invoke Production RPC on ONLINE CLOUD SUPABASE (aivcmkwclfipntadipec)
   const { data: rpcData, error: rpcErr } = await onlineSupabase.rpc('execute_deal_sync_transaction', { payload })
 
