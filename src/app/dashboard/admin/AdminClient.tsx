@@ -326,7 +326,7 @@ export default function AdminClient({ users }: Props) {
                                 {itemName}
                               </td>
                               <td style={{ padding: '10px 8px', color: '#94a3b8', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '12px' }}>
-                                {item.diff_details || 'Record is missing entirely on online cloud DB.'}
+                                {item.diff_detail || 'Record is missing entirely on online cloud DB.'}
                               </td>
                               <td style={{ padding: '10px 8px' }}>
                                 <span style={{
