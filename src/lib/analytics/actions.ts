@@ -5,26 +5,27 @@ import { createClient } from '@/lib/supabase/server'
 export async function getProfitabilityHeatmap() {
   const supabase = await createClient()
 
-  // 1. Fetch Deals & Logistics & Deal Items
-  const { data: deals } = await supabase
-    .from('deals')
-    .select(`
-      id, deal_number, quantity, total_commitment, amex_amount, funding_source,
-      shipment_deals(shipments(total_logistics_cost, shipment_deals(deals(quantity)))),
-      deal_items(*)
-    `)
-  
-  // 2. Fetch B2B Invoice Line Items
-  const { data: invoiceLineItems } = await supabase
-    .from('invoice_line_items')
-    .select('deal_id, deal_item_id, quantity, unit_price, invoices!inner(status)')
-    .in('invoices.status', ['PAID', 'PARTIAL', 'ISSUED']) // exclude DRAFT, CANCELLED
-
-  // 3. Fetch B2C Online Sales (Inventory Items that are sold)
-  const { data: soldInventory } = await supabase
-    .from('inventory_items')
-    .select('model, grade, unit_cost, logistics_cost, target_price')
-    .not('online_order_id', 'is', null)
+  const [
+    { data: deals },
+    { data: invoiceLineItems },
+    { data: soldInventory }
+  ] = await Promise.all([
+    supabase
+      .from('deals')
+      .select(`
+        id, deal_number, quantity, total_commitment, amex_amount, funding_source,
+        shipment_deals(shipments(total_logistics_cost, shipment_deals(deals(quantity)))),
+        deal_items(*)
+      `),
+    supabase
+      .from('invoice_line_items')
+      .select('deal_id, deal_item_id, quantity, unit_price, invoices!inner(status)')
+      .in('invoices.status', ['PAID', 'PARTIAL', 'ISSUED']),
+    supabase
+      .from('inventory_items')
+      .select('model, grade, unit_cost, logistics_cost, target_price')
+      .not('online_order_id', 'is', null)
+  ])
 
   // Map to hold results: Key = Model|Grade
   const heatMap: Record<string, { model: string, grade: string, unitsSold: number, revenue: number, cogs: number, netProfit: number, margin: number }> = {}
@@ -123,18 +124,22 @@ export async function getProfitabilityHeatmap() {
 export async function getProcurementForecast() {
   const supabase = await createClient()
   
-  const { data: invoiceLineItems } = await supabase
-    .from('invoice_line_items')
-    .select('deal_item_id, quantity, unit_price, invoices!inner(status, issue_date)')
-    .in('invoices.status', ['PAID', 'PARTIAL', 'ISSUED'])
-
-  const { data: dealItems } = await supabase
-    .from('deal_items')
-    .select('*, deals(auction_fee, total_cost)')
-
-  const { data: onlineInventory } = await supabase
-    .from('inventory_items')
-    .select('model, storage, grade, status, target_price')
+  const [
+    { data: invoiceLineItems },
+    { data: dealItems },
+    { data: onlineInventory }
+  ] = await Promise.all([
+    supabase
+      .from('invoice_line_items')
+      .select('deal_item_id, quantity, unit_price, invoices!inner(status, issue_date)')
+      .in('invoices.status', ['PAID', 'PARTIAL', 'ISSUED']),
+    supabase
+      .from('deal_items')
+      .select('*, deals(auction_fee, total_cost)'),
+    supabase
+      .from('inventory_items')
+      .select('model, storage, grade, status, target_price')
+  ])
 
   // Map to hold results: Key = Model|Storage|Grade
   const forecast: Record<string, any> = {}

@@ -412,25 +412,27 @@ const DEALS_PAGE_SIZE = 25
 export async function getDeals(page: number = 0) {
   const supabase = await createClient()
 
-  // Get total count first
-  const { count } = await supabase
-    .from('deals')
-    .select('*', { count: 'exact', head: true })
-
   const from = page * DEALS_PAGE_SIZE
   const to = from + DEALS_PAGE_SIZE - 1
 
-  const { data, error } = await supabase
-    .from('deals')
-    .select('*, items:deal_items(*), shipment_deals(shipments(id, shipment_number, total_logistics_cost, shipment_deals(deals(quantity)))), invoice_line_items(quantity, unit_price, deal_item_id, invoices(id, status, amount_paid, issue_date))')
-    .order('created_at', { ascending: false })
-    .range(from, to)
-  if (error) return { data: [], total: 0 }
+  const [
+    { count },
+    { data, error },
+    { data: syncStates }
+  ] = await Promise.all([
+    supabase.from('deals').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('deals')
+      .select('*, items:deal_items(*), shipment_deals(shipments(id, shipment_number, total_logistics_cost, shipment_deals(deals(quantity)))), invoice_line_items(quantity, unit_price, deal_item_id, invoices(id, status, amount_paid, issue_date))')
+      .order('created_at', { ascending: false })
+      .range(from, to),
+    supabase
+      .from('record_sync_state')
+      .select('source_record_id, last_synced_at')
+      .eq('source_table', 'deals')
+  ])
 
-  const { data: syncStates } = await supabase
-    .from('record_sync_state')
-    .select('source_record_id, last_synced_at')
-    .eq('source_table', 'deals')
+  if (error || !data) return { data: [], total: 0 }
 
   const syncMap: Record<string, string> = {}
   if (syncStates) {

@@ -23,8 +23,7 @@ export async function getInvoices(month?: string) {
     dataQuery = dataQuery.gte('issue_date', startDate).lt('issue_date', endDate)
   }
 
-  const { count } = await countQuery
-  const { data, error } = await dataQuery
+  const [{ count }, { data, error }] = await Promise.all([countQuery, dataQuery])
   
   if (error) {
     console.error('getInvoices error:', error)

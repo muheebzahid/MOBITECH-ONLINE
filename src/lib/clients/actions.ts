@@ -84,20 +84,18 @@ export async function getClientImpactAnalysis(clientId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  // 1. Fetch Client Details
-  const { data: client } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('id', clientId)
-    .single()
+  // 1. Fetch Client Details, Linked Invoices, and Other Clients in parallel
+  const [
+    { data: client },
+    { data: invoices },
+    { data: otherClients }
+  ] = await Promise.all([
+    supabase.from('clients').select('*').eq('id', clientId).single(),
+    supabase.from('invoices').select('id, invoice_number, status, total_amount, balance_due, amount_paid, issue_date, created_at').eq('client_id', clientId),
+    supabase.from('clients').select('id, name, email, phone').neq('id', clientId).order('name', { ascending: true })
+  ])
 
   if (!client) return { error: 'Client account not found' }
-
-  // 2. Fetch Linked Invoices
-  const { data: invoices } = await supabase
-    .from('invoices')
-    .select('id, invoice_number, status, total_amount, balance_due, amount_paid, issue_date, created_at')
-    .eq('client_id', clientId)
 
   const invList = invoices || []
   const invIds = invList.map(i => i.id)
@@ -119,13 +117,6 @@ export async function getClientImpactAnalysis(clientId: string) {
     }
     deals = Array.from(dealMap.values())
   }
-
-  // 4. Fetch Other Available Client Accounts for Reassignment
-  const { data: otherClients } = await supabase
-    .from('clients')
-    .select('id, name, email, phone')
-    .neq('id', clientId)
-    .order('name', { ascending: true })
 
   return {
     success: true,

@@ -10,24 +10,23 @@ const SHIPMENTS_PAGE_SIZE = 25
 export async function getShipments(page: number = 0) {
   const supabase = await createClient()
 
-  const { count } = await supabase
-    .from('shipments')
-    .select('*', { count: 'exact', head: true })
-
   const from = page * SHIPMENTS_PAGE_SIZE
   const to = from + SHIPMENTS_PAGE_SIZE - 1
 
-  const { data, error } = await supabase
-    .from('shipments')
-    .select(`
-      *,
-      shipment_deals(
-        deal_id,
-        deals(deal_number, model, quantity, total_commitment, status)
-      )
-    `)
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  const [{ count }, { data, error }] = await Promise.all([
+    supabase.from('shipments').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('shipments')
+      .select(`
+        *,
+        shipment_deals(
+          deal_id,
+          deals(deal_number, model, quantity, total_commitment, status)
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .range(from, to)
+  ])
 
   if (error) {
     console.error('getShipments error:', error)

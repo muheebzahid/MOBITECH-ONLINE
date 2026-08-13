@@ -9,24 +9,23 @@ const INVENTORY_PAGE_SIZE = 25
 export async function getAllInventory(page: number = 0) {
   const supabase = await createClient()
 
-  const { count } = await supabase
-    .from('inventory_items')
-    .select('*', { count: 'exact', head: true })
-
   const from = page * INVENTORY_PAGE_SIZE
   const to = from + INVENTORY_PAGE_SIZE - 1
 
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select(`
-      *,
-      deals(deal_number, supplier, model),
-      invoices(invoice_number),
-      online_orders(order_number, platform)
-    `)
-    .order('created_at', { ascending: false })
-    .range(from, to)
-  
+  const [{ count }, { data, error }] = await Promise.all([
+    supabase.from('inventory_items').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('inventory_items')
+      .select(`
+        *,
+        deals(deal_number, supplier, model),
+        invoices(invoice_number),
+        online_orders(order_number, platform)
+      `)
+      .order('created_at', { ascending: false })
+      .range(from, to)
+  ])
+
   if (error) {
     console.error('getAllInventory error:', error)
     return { data: [], total: 0 }

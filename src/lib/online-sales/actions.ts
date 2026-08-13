@@ -8,20 +8,21 @@ const ORDERS_PAGE_SIZE = 25
 export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: number = 0) {
   const supabase = await createClient()
 
-  const { count } = await supabase
-    .from('online_orders')
-    .select('*', { count: 'exact', head: true })
-    .eq('platform', platform)
-
   const from = page * ORDERS_PAGE_SIZE
   const to = from + ORDERS_PAGE_SIZE - 1
 
-  const { data, error } = await supabase
-    .from('online_orders')
-    .select('*, items:online_order_items(*), inventory_items(id, imei, serial_number)')
-    .eq('platform', platform)
-    .order('sale_date', { ascending: false })
-    .range(from, to)
+  const [{ count }, { data, error }] = await Promise.all([
+    supabase
+      .from('online_orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('platform', platform),
+    supabase
+      .from('online_orders')
+      .select('*, items:online_order_items(*), inventory_items(id, imei, serial_number)')
+      .eq('platform', platform)
+      .order('sale_date', { ascending: false })
+      .range(from, to)
+  ])
 
   if (error) {
     console.error('getOnlineOrders error:', error)

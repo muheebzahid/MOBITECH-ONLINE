@@ -175,21 +175,20 @@ export async function deleteRepayment(id: string) {
 export async function getTreasuryData() {
   const supabase = await createClient()
   
-  // Fetch deals with shipment costs
-  const { data: deals } = await supabase.from('deals').select(`
-    *,
-    shipment_deals (
-      shipments (
-        total_logistics_cost,
-        shipment_deals ( deals ( quantity ) )
+  const [{ data: deals }, { data: invoices }] = await Promise.all([
+    supabase.from('deals').select(`
+      *,
+      shipment_deals (
+        shipments (
+          total_logistics_cost,
+          shipment_deals ( deals ( quantity ) )
+        )
       )
-    )
-  `)
-  
-  // Fetch paid invoices with line items and SKU costs
-  const { data: invoices } = await supabase.from('invoices')
-    .select('*, invoice_line_items(*, deal_items(unit_cost)), clients(name)')
-    .eq('status', 'PAID')
+    `),
+    supabase.from('invoices')
+      .select('*, invoice_line_items(*, deal_items(unit_cost)), clients(name)')
+      .eq('status', 'PAID')
+  ])
     
   return {
     deals: deals || [],
