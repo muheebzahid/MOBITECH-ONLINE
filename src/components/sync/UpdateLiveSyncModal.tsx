@@ -11,7 +11,7 @@ interface Props {
 
 export default function UpdateLiveSyncModal({ dealIds: initialDealIds, isOpen, onClose, onAddRequiredDeals }: Props) {
   const [activeDealIds, setActiveDealIds] = useState<string[]>(initialDealIds)
-  const [activeTab, setActiveTab] = useState<'preview' | 'tree' | 'issues' | 'files' | 'result'>('preview')
+  const [activeTab, setActiveTab] = useState<'preview' | 'changes' | 'tree' | 'issues' | 'files' | 'result'>('preview')
   const [loading, setLoading] = useState(false)
   const [executing, setExecuting] = useState(false)
   const [verifying, setVerifying] = useState(false)
@@ -163,6 +163,105 @@ export default function UpdateLiveSyncModal({ dealIds: initialDealIds, isOpen, o
   const expectedProfit = totalRevenue - (totalPurchaseCost + totalLogisticsCost)
   const payloadKbs = ((manifest?.estimated_payload_bytes || 0) / 1024).toFixed(1)
 
+  function getRecordDescription(rec: any) {
+    const { table, record_id } = rec
+    if (!pkg) return `${table} (${record_id})`
+
+    switch (table) {
+      case 'deals': {
+        const item = (pkg.deals || []).find((x: any) => x.id === record_id)
+        return item ? `Deal #${item.deal_number} (${item.model})` : `Deal (${record_id})`
+      }
+      case 'invoices': {
+        const item = (pkg.invoices || []).find((x: any) => x.id === record_id)
+        return item ? `Invoice #${item.invoice_number} (Customer: ${item.customer_name})` : `Invoice (${record_id})`
+      }
+      case 'shipments': {
+        const item = (pkg.shipments || []).find((x: any) => x.id === record_id)
+        return item ? `Shipment #${item.shipment_number} (${item.carrier || 'N/A'})` : `Shipment (${record_id})`
+      }
+      case 'clients': {
+        const item = (pkg.clients || []).find((x: any) => x.id === record_id)
+        return item ? `Client: ${item.name}` : `Client (${record_id})`
+      }
+      case 'payments': {
+        const item = (pkg.payments || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const inv = (pkg.invoices || []).find((x: any) => x.id === item.invoice_id)
+          return `Payment of $${Number(item.amount).toLocaleString()} for Invoice ${inv ? `#${inv.invoice_number}` : ''}`
+        }
+        return `Payment (${record_id})`
+      }
+      case 'inventory_items': {
+        const item = (pkg.inventory_items || []).find((x: any) => x.id === record_id)
+        return item ? `Inventory Device: ${item.model} (${item.imei || item.serial_number || 'No IMEI/Serial'})` : `Inventory Item (${record_id})`
+      }
+      case 'online_orders': {
+        const item = (pkg.online_orders || []).find((x: any) => x.id === record_id)
+        return item ? `Online Order #${item.order_number} (${item.platform})` : `Online Order (${record_id})`
+      }
+      case 'deal_items': {
+        const item = (pkg.deal_items || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const deal = (pkg.deals || []).find((x: any) => x.id === item.deal_id)
+          return `Deal Item: ${item.model} ${item.storage || ''} (${item.quantity} units) for Deal ${deal ? `#${deal.deal_number}` : ''}`
+        }
+        return `Deal Item (${record_id})`
+      }
+      case 'invoice_line_items': {
+        const item = (pkg.invoice_line_items || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const inv = (pkg.invoices || []).find((x: any) => x.id === item.invoice_id)
+          return `Invoice Line: "${item.description}" (${item.quantity} units) for Invoice ${inv ? `#${inv.invoice_number}` : ''}`
+        }
+        return `Invoice Line Item (${record_id})`
+      }
+      case 'shipment_documents': {
+        const item = (pkg.shipment_documents || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const ship = (pkg.shipments || []).find((x: any) => x.id === item.shipment_id)
+          return `Shipment Document: "${item.name}" for Shipment ${ship ? `#${ship.shipment_number}` : ''}`
+        }
+        return `Shipment Document (${record_id})`
+      }
+      case 'shipment_deals': {
+        const item = (pkg.shipment_deals || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const deal = (pkg.deals || []).find((x: any) => x.id === item.deal_id)
+          const ship = (pkg.shipments || []).find((x: any) => x.id === item.shipment_id)
+          return `Link: Deal ${deal ? `#${deal.deal_number}` : ''} ➔ Shipment ${ship ? `#${ship.shipment_number}` : ''}`
+        }
+        return `Shipment Deal Link (${record_id})`
+      }
+      case 'online_order_items': {
+        const item = (pkg.online_order_items || []).find((x: any) => x.id === record_id)
+        return item ? `Online Order Item: "${item.title}"` : `Online Order Item (${record_id})`
+      }
+      case 'deal_status_history': {
+        const item = (pkg.deal_status_history || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const deal = (pkg.deals || []).find((x: any) => x.id === item.deal_id)
+          return `Deal Status Update: ${item.old_status} ➔ ${item.new_status} for Deal ${deal ? `#${deal.deal_number}` : ''}`
+        }
+        return `Deal Status History Log (${record_id})`
+      }
+      case 'deal_edit_history': {
+        const item = (pkg.deal_edit_history || []).find((x: any) => x.id === record_id)
+        if (item) {
+          const deal = (pkg.deals || []).find((x: any) => x.id === item.deal_id)
+          return `Deal Edit Log for Deal ${deal ? `#${deal.deal_number}` : ''}`
+        }
+        return `Deal Edit History Log (${record_id})`
+      }
+      case 'inventory_history': {
+        const item = (pkg.inventory_history || []).find((x: any) => x.id === record_id)
+        return item ? `Inventory History Log: ${item.previous_status || 'N/A'} ➔ ${item.new_status}` : `Inventory History Log (${record_id})`
+      }
+      default:
+        return `${table} (${record_id})`
+    }
+  }
+
   return (
     <div
       style={{
@@ -294,6 +393,7 @@ export default function UpdateLiveSyncModal({ dealIds: initialDealIds, isOpen, o
         <div style={{ padding: '0 28px', borderBottom: '1px solid #1e293b', backgroundColor: '#0f172a', display: 'flex', gap: '24px' }}>
           {[
             { id: 'preview', label: `Summary & Metrics (${manifest?.counts?.total_records || 0} Records)` },
+            { id: 'changes', label: `Pending Changes`, badge: (preflight?.records || []).filter((r: any) => r.action === 'CREATE' || r.action === 'UPDATE').length },
             { id: 'tree', label: `Relational Deal Tree (${pkg.deals?.length || 0} Deals)` },
             { id: 'issues', label: `Guided Issues & Checks`, badge: manifest?.issues?.length || 0 },
             { id: 'files', label: `File Assets (${discovery?.file_references?.length || 0})` }
@@ -432,6 +532,99 @@ export default function UpdateLiveSyncModal({ dealIds: initialDealIds, isOpen, o
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB 1.5: PENDING CHANGES */}
+          {!loading && activeTab === 'changes' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ fontSize: '14px', color: '#94a3b8' }}>
+                The following records have been created or modified since the last live update push:
+              </div>
+
+              {(() => {
+                const changedRecords = (preflight?.records || []).filter((r: any) => r.action === 'CREATE' || r.action === 'UPDATE');
+                const skippedCount = (preflight?.records || []).filter((r: any) => r.action === 'SKIP').length;
+                const conflictRecords = (preflight?.records || []).filter((r: any) => r.action === 'CONFLICT');
+
+                if (changedRecords.length === 0 && conflictRecords.length === 0) {
+                  return (
+                    <div style={{ padding: '60px 0', textAlign: 'center', backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b' }}>
+                      <div style={{ fontSize: '32px', marginBottom: '10px' }}>✨</div>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>No Pending Changes Detected</div>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                        All {skippedCount} records in this package match the online database exactly.
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Conflict warnings */}
+                    {conflictRecords.length > 0 && (
+                      <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171' }}>
+                        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>⚠️ Sync Conflicts Detected ({conflictRecords.length})</div>
+                        <div style={{ fontSize: '12.5px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {conflictRecords.map((rec: any, idx: number) => (
+                            <div key={idx}>
+                              • <strong>{rec.table}</strong>: {getRecordDescription(rec)} — <em>{rec.reason}</em>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Change list */}
+                    {changedRecords.length > 0 && (
+                      <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b', overflow: 'hidden' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #1e293b', backgroundColor: '#1e293b' }}>
+                              <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600 }}>Module / Table</th>
+                              <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600 }}>Record Detail</th>
+                              <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600 }}>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {changedRecords.map((rec: any, idx: number) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                                <td style={{ padding: '12px 16px', color: '#38bdf8', fontWeight: 600, textTransform: 'capitalize' }}>
+                                  {rec.table.replace('_', ' ')}
+                                </td>
+                                <td style={{ padding: '12px 16px', color: '#e2e8f0' }}>
+                                  {getRecordDescription(rec)}
+                                </td>
+                                <td style={{ padding: '12px 16px' }}>
+                                  <span
+                                    style={{
+                                      padding: '4px 10px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      backgroundColor: rec.action === 'CREATE' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                      color: rec.action === 'CREATE' ? '#34d399' : '#60a5fa',
+                                      border: `1px solid ${rec.action === 'CREATE' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`
+                                    }}
+                                  >
+                                    {rec.action === 'CREATE' ? 'NEW RECORD' : 'MODIFIED'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {skippedCount > 0 && (
+                      <div style={{ fontSize: '12px', color: '#475569', textAlign: 'right' }}>
+                        * {skippedCount} unmodified records will be skipped during this sync.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
