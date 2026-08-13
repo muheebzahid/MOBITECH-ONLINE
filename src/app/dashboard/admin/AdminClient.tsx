@@ -334,10 +334,10 @@ export default function AdminClient({ users }: Props) {
                                   fontWeight: 600,
                                   padding: '2px 8px',
                                   borderRadius: '6px',
-                                  background: item.type === 'missing' ? 'rgba(244, 63, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                                  color: item.type === 'missing' ? '#fb7185' : '#fbbf24'
+                                  background: item.issue === 'MISSING_ONLINE' ? 'rgba(244, 63, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                  color: item.issue === 'MISSING_ONLINE' ? '#fb7185' : '#fbbf24'
                                 }}>
-                                  {item.type === 'missing' ? 'MISSING' : 'OUT_OF_DATE'}
+                                  {item.issue === 'MISSING_ONLINE' ? 'MISSING' : 'OUT_OF_DATE'}
                                 </span>
                               </td>
                               <td style={{ padding: '10px 8px', color: '#64748b' }}>
