@@ -27,7 +27,18 @@ function fmtS(n: number) {
 
 import { moveSkuToOnlineInventory } from '@/lib/deals/actions'
 
+import { useQuery } from '@tanstack/react-query'
+import { getAllInventory } from '@/lib/inventory/actions'
+
 export default function InventoryClient({ inventory, activeDeals = [], inventoryTotal = 0, inventoryPage = 0 }: { inventory: any[], activeDeals?: any[], inventoryTotal?: number, inventoryPage?: number }) {
+  const { data: inventoryResult } = useQuery({
+    queryKey: ['inventory', inventoryPage],
+    queryFn: () => getAllInventory(inventoryPage),
+    initialData: { data: inventory, total: inventoryTotal },
+    staleTime: 15 * 1000,
+  })
+
+  const currentInventory = inventoryResult?.data || inventory
   const role = useRole()
   const [isPending, startTransition] = useTransition()
   const [activeStage, setActiveStage] = useState('SEPARATED')
@@ -41,7 +52,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
       const q = urlParams.get('q')
       if (q) {
         setSearchTerm(q)
-        const matchingItem = inventory.find((it: any) => 
+        const matchingItem = currentInventory.find((it: any) => 
           (it.imei && it.imei.toLowerCase() === q.toLowerCase()) || 
           (it.serial_number && it.serial_number.toLowerCase() === q.toLowerCase())
         )
@@ -313,7 +324,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
 
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>
         {STAGES.map(s => {
-          const count = inventory.filter(i => i.refurb_stage === s.id).length
+          const count = currentInventory.filter(i => i.refurb_stage === s.id).length
           return (
             <button
               key={s.id}

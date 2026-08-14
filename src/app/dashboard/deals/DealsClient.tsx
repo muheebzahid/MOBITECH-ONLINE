@@ -5,7 +5,7 @@ import { useState, useEffect, Suspense, useTransition, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DEAL_STATUSES, type Deal } from '@/lib/deals/constants'
 import { useRole } from '@/components/RoleProvider'
-import { bulkCreateDeals, updateDealStatus } from '@/lib/deals/actions'
+import { bulkCreateDeals, updateDealStatus, getDealById } from '@/lib/deals/actions'
 import NewDealModal from './NewDealModal'
 import EditDealModal from './EditDealModal'
 import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
@@ -60,7 +60,22 @@ function getShipmentColor(shipmentId: string) {
   return SHIPMENT_COLORS[Math.abs(hash) % SHIPMENT_COLORS.length];
 }
 
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getDeals } from '@/lib/deals/actions'
+
 function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
+  const queryClient = useQueryClient()
+
+  const { data: dealsResult, isFetching } = useQuery({
+    queryKey: ['deals', page],
+    queryFn: () => getDeals(page),
+    initialData: { data: deals, total },
+    staleTime: 30 * 1000,
+  })
+
+  const currentDeals = dealsResult?.data || deals
+  const currentTotal = dealsResult?.total ?? total
+
   const [showModal, setShowModal] = useState(false)
   const [editDeal, setEditDeal]   = useState<Deal | null>(null)
   const [showAmexDetails, setShowAmexDetails] = useState(false)
@@ -345,7 +360,7 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
     }
   }
 
-  const filtered = deals.filter(d => {
+  const filtered = currentDeals.filter(d => {
     const matchSearch = search === '' ||
       d.deal_number.toLowerCase().includes(search.toLowerCase()) ||
       d.model.toLowerCase().includes(search.toLowerCase())
@@ -426,12 +441,12 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
 
   // Deal counts
   const now30 = Date.now()
-  const closedDeals       = deals.filter(d => d.status === 'DEAL_CLOSED').length
-  const unclosedFresh     = deals.filter(d => d.status !== 'DEAL_CLOSED' && (!(d as any).payment_date || (now30 - new Date((d as any).payment_date).getTime()) < 30 * 86400_000)).length
-  const unclosedOverdue   = deals.filter(d => d.status !== 'DEAL_CLOSED' && (d as any).payment_date && (now30 - new Date((d as any).payment_date).getTime()) >= 30 * 86400_000).length
-  const totalRevenue      = deals.reduce((s, d) => s + (d.total_revenue || 0), 0)
+  const closedDeals       = currentDeals.filter(d => d.status === 'DEAL_CLOSED').length
+  const unclosedFresh     = currentDeals.filter(d => d.status !== 'DEAL_CLOSED' && (!(d as any).payment_date || (now30 - new Date((d as any).payment_date).getTime()) < 30 * 86400_000)).length
+  const unclosedOverdue   = currentDeals.filter(d => d.status !== 'DEAL_CLOSED' && (d as any).payment_date && (now30 - new Date((d as any).payment_date).getTime()) >= 30 * 86400_000).length
+  const totalRevenue      = currentDeals.reduce((s, d) => s + (d.total_revenue || 0), 0)
   
-  const totalRemainingUnits = deals.reduce((sum, deal) => {
+  const totalRemainingUnits = currentDeals.reduce((sum, deal) => {
     if (deal.status === 'DEAL_CLOSED') return sum
     const invoicedQty = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sq:number, i:any) => sq + (i.quantity || 0), 0) : 0
     const rem = deal.quantity - invoicedQty
@@ -439,19 +454,19 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
   }, 0)
 
   // Amex: sum of amex_amount on all UNCLOSED deals funded by Amex or Mixed
-  const amexStuck = deals
+  const amexStuck = currentDeals
     .filter(d => d.status !== 'DEAL_CLOSED' && (d.funding_source === 'AMEX' || d.funding_source === 'MIXED'))
     .reduce((s, d) => s + (Number(d.amex_amount) || (d.funding_source === 'MIXED' ? Number(d.total_commitment) / 2 : Number(d.total_commitment))), 0)
   const amexAvailable = (settings.amex_limit || 500000) - amexStuck
 
   // Turbo: sum of cash_amount on all UNCLOSED deals funded by Turbo or Mixed
-  const turboStuck = deals
+  const turboStuck = currentDeals
     .filter(d => d.status !== 'DEAL_CLOSED' && (d.funding_source === 'TURBO_CASH' || d.funding_source === 'MIXED'))
     .reduce((s, d) => s + (Number(d.cash_amount) || (d.funding_source === 'MIXED' ? Number(d.total_commitment) / 2 : Number(d.total_commitment))), 0)
   const turboAvailable = (settings.turbo_cash_limit || 150000) - turboStuck
 
   // SB: sum of cash_amount on all UNCLOSED deals funded by SB
-  const sbStuck = deals
+  const sbStuck = currentDeals
     .filter(d => d.status !== 'DEAL_CLOSED' && d.funding_source === 'SB_CASH')
     .reduce((s, d) => s + (Number(d.cash_amount) || Number(d.total_commitment)), 0)
   const sbAvailable = (settings.sb_cash_limit || 150000) - sbStuck
@@ -854,7 +869,7 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
             </thead>
             <tbody>
               {sortedFiltered.map(deal => {
-                const st = DEAL_STATUSES[deal.status]
+                const st = (DEAL_STATUSES as any)[deal.status]
                 const isDealUnclosed = deal.status !== 'DEAL_CLOSED'
                 const shipmentId = (deal as any).shipment_deals?.[0]?.shipments?.id
                 const invoicedQty = (deal as any).invoice_line_items ? (deal as any).invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sum:number, i:any) => sum + (i.quantity || 0), 0) : 0
@@ -908,7 +923,18 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
                 }
                 const highlightStyle = { ...bgStyle, transition: 'background-color 0.5s' }
                 return (
-                  <tr key={deal.id} className="deal-row" style={highlightStyle}>
+                  <tr 
+                    key={deal.id} 
+                    className="deal-row" 
+                    style={highlightStyle}
+                    onMouseEnter={() => {
+                      queryClient.prefetchQuery({
+                        queryKey: ['deal', deal.id],
+                        queryFn: () => getDealById(deal.id),
+                        staleTime: 30 * 1000
+                      })
+                    }}
+                  >
                     <td>
                       <input type="checkbox" checked={selectedDealIds.includes(deal.id)} onChange={(e) => {
                         if (e.target.checked) setSelectedDealIds([...selectedDealIds, deal.id])

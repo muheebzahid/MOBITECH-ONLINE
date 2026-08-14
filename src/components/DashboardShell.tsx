@@ -14,7 +14,10 @@ interface Props {
   children: React.ReactNode
 }
 
+import { useQueryClient } from '@tanstack/react-query'
+
 export default function DashboardShell({ user, children }: Props) {
+  const queryClient = useQueryClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const router = useRouter()
@@ -25,6 +28,7 @@ export default function DashboardShell({ user, children }: Props) {
   const isExpanded = sidebarOpen || isHovered
 
   const handleLogout = async () => {
+    queryClient.clear()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()

@@ -18,17 +18,27 @@ function fmtS(n: number) {
   return `$${formattedInteger}.${decimalPart}`
 }
 
+import { useQuery } from '@tanstack/react-query'
+import { getClients } from '@/lib/clients/actions'
+
 export default function ClientsClient({ clients }: { clients: any[] }) {
+  const { data: currentClients = clients } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => getClients(),
+    initialData: clients,
+    staleTime: 120 * 1000,
+  })
+
   const [searchQuery, setSearchQuery] = useState('')
 
   // Aggregate global metrics
-  const activeClientsCount = clients.length
-  const totalBilled = clients.reduce((sum, c) => sum + Number(c.total_billed || 0), 0)
-  const totalCollected = clients.reduce((sum, c) => sum + Number(c.total_paid || 0), 0)
-  const totalOutstanding = clients.reduce((sum, c) => sum + Number(c.total_outstanding || 0), 0)
+  const activeClientsCount = currentClients.length
+  const totalBilled = currentClients.reduce((sum: number, c: any) => sum + Number(c.total_billed || 0), 0)
+  const totalCollected = currentClients.reduce((sum: number, c: any) => sum + Number(c.total_paid || 0), 0)
+  const totalOutstanding = currentClients.reduce((sum: number, c: any) => sum + Number(c.total_outstanding || 0), 0)
 
   // Filter clients by search query
-  const filteredClients = clients.filter(c => 
+  const filteredClients = currentClients.filter((c: any) => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase()))
   )

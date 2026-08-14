@@ -35,7 +35,18 @@ function fmtD(d: string | null | undefined) {
   return new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+import { useQuery } from '@tanstack/react-query'
+import { getOnlineOrders } from '@/lib/online-sales/actions'
+
 export default function OnlineSalesClient({ platform, initialOrders, readyItems, ordersTotal = 0, ordersPage = 0 }: Props) {
+  const { data: ordersResult } = useQuery({
+    queryKey: ['online-orders', platform, ordersPage],
+    queryFn: () => getOnlineOrders(platform, ordersPage),
+    initialData: { data: initialOrders, total: ordersTotal },
+    staleTime: 15 * 1000,
+  })
+
+  const currentOrders = ordersResult?.data || initialOrders
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
@@ -121,7 +132,7 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
   }
 
   // Filter & Search
-  const filtered = initialOrders.filter(o => {
+  const filtered = currentOrders.filter(o => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
     const matchOrder = o.order_number?.toLowerCase().includes(q)
@@ -178,7 +189,7 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
   const handleOpenBulkFulfill = () => {
     const assignments: typeof bulkAssignments = []
     for (const orderId of Array.from(selectedOrders)) {
-      const order = initialOrders.find(o => o.id === orderId)
+      const order = currentOrders.find(o => o.id === orderId)
       if (!order) continue
       for (const item of order.items) {
         if (!item.inventory_items || item.inventory_items.length < item.quantity) {

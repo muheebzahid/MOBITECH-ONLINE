@@ -23,7 +23,18 @@ function fmtS(n: number) {
 
 function fmtD(d: string|null|undefined) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}) }
 
+import { useQuery } from '@tanstack/react-query'
+import { getInvoices } from '@/lib/sales/actions'
+
 export default function SalesClient({ invoices, pendingInvoices = [], clients = [], invoicesTotal = 0, currentMonth = 'all' }: { invoices: any[], pendingInvoices?: any[], clients?: any[], invoicesTotal?: number, currentMonth?: string }) {
+  const { data: invoicesResult } = useQuery({
+    queryKey: ['invoices', currentMonth],
+    queryFn: () => getInvoices(currentMonth),
+    initialData: { data: invoices, total: invoicesTotal },
+    staleTime: 30 * 1000,
+  })
+
+  const currentInvoices = invoicesResult?.data || invoices
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
@@ -66,7 +77,7 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
     })
   }
 
-  const filteredInvoices = invoices.filter(inv => {
+  const filteredInvoices = currentInvoices.filter(inv => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
 

@@ -135,3 +135,13 @@ export async function deleteMember(authUserId: string) {
   revalidatePath('/dashboard/admin')
   return { success: true }
 }
+
+export async function getSyncHistory() {
+  const supabase = await createClient()
+  const { data: jobs } = await supabase
+    .from('sync_jobs')
+    .select('*')
+    .order('executed_at', { ascending: false })
+    .limit(50)
+  return jobs || []
+}

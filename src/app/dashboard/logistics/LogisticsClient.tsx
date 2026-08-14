@@ -18,7 +18,18 @@ interface Props {
   shipmentsPage?: number
 }
 
+import { useQuery } from '@tanstack/react-query'
+import { getShipments } from '@/lib/logistics/actions'
+
 export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTotal = 0, shipmentsPage = 0 }: Props) {
+  const { data: shipmentsResult } = useQuery({
+    queryKey: ['shipments', shipmentsPage],
+    queryFn: () => getShipments(shipmentsPage),
+    initialData: { data: shipments, total: shipmentsTotal },
+    staleTime: 30 * 1000,
+  })
+
+  const currentShipments = shipmentsResult?.data || shipments
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
@@ -29,11 +40,11 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
   const [error, setError] = useState('')
 
   // Summary counts
-  const inTransit   = shipments.filter(s => ['SHIPPED_FROM_USA','IN_TRANSIT'].includes(s.status)).length
-  const pending     = shipments.filter(s => ['PENDING','AT_SB_TECHNOLOGY'].includes(s.status)).length
-  const atDubai     = shipments.filter(s => ['ARRIVED_DUBAI','CUSTOMS_CLEARED','AT_TURBO_LOGISTICS'].includes(s.status)).length
-  const delivered   = shipments.filter(s => s.status === 'DELIVERED_TO_MOBITECH').length
-  const totalCost   = shipments.reduce((s, sh) => s + (sh.total_logistics_cost || 0), 0)
+  const inTransit   = currentShipments.filter(s => ['SHIPPED_FROM_USA','IN_TRANSIT'].includes(s.status)).length
+  const pending     = currentShipments.filter(s => ['PENDING','AT_SB_TECHNOLOGY'].includes(s.status)).length
+  const atDubai     = currentShipments.filter(s => ['ARRIVED_DUBAI','CUSTOMS_CLEARED','AT_TURBO_LOGISTICS'].includes(s.status)).length
+  const delivered   = currentShipments.filter(s => s.status === 'DELIVERED_TO_MOBITECH').length
+  const totalCost   = currentShipments.reduce((s, sh) => s + (sh.total_logistics_cost || 0), 0)
 
   const toggleDeal = (id: string) => {
     setSelectedDeals(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id])

@@ -48,7 +48,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   // 1. Prepare queries
   let invoicesQuery = supabase
     .from('invoices')
-    .select('id, total_amount, status, issue_date')
+    .select('id, total_amount, balance_due, amount_paid, status, issue_date')
     .neq('status', 'CANCELLED')
   if (fromDate) invoicesQuery = invoicesQuery.gte('issue_date', fromDate)
   if (toDate) invoicesQuery = invoicesQuery.lte('issue_date', toDate)
@@ -270,7 +270,23 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   const amexAvailable = amexLimit - amexStuck
   const cashAvailable = cashLimit - cashStuck
 
+  // Balance Sheet Calculations (GAAP Standard)
+  const accountsReceivable = invoices ? invoices
+    .filter((inv: any) => inv.status !== 'CANCELLED' && inv.status !== 'VOIDED')
+    .reduce((sum, inv) => sum + (Number(inv.balance_due) || 0), 0) : 0
 
+  const accountsPayable = deals ? deals
+    .filter((d: any) => d.status !== 'DEAL_CLOSED')
+    .reduce((sum, d) => sum + (Number(d.cash_amount) || Number(d.total_commitment)), 0) : 0
+
+  const amexLiability = amexStuck
+  const liquidCash = Math.max(0, cashAvailable)
+  const partnerCapital = (partners || []).reduce((sum: number, p: any) => sum + Number(p.current_balance || 0), 0)
+  const retainedEarnings = netProfit
+
+  const totalAssets = liquidCash + accountsReceivable + inventoryValue
+  const totalLiabilities = accountsPayable + amexLiability
+  const totalEquity = partnerCapital + retainedEarnings
 
   return {
     usd: {
@@ -291,6 +307,19 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         cashLimit,
         cashStuck,
         cashAvailable
+      },
+      balanceSheet: {
+        liquidCash,
+        accountsReceivable,
+        inventoryAsset: inventoryValue,
+        totalAssets,
+        accountsPayable,
+        amexLiability,
+        totalLiabilities,
+        partnerCapital,
+        retainedEarnings,
+        totalEquity,
+        isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 1
       }
     },
     aed: {
@@ -311,6 +340,19 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         cashLimit: cashLimit * USD_TO_AED,
         cashStuck: cashStuck * USD_TO_AED,
         cashAvailable: cashAvailable * USD_TO_AED
+      },
+      balanceSheet: {
+        liquidCash: liquidCash * USD_TO_AED,
+        accountsReceivable: accountsReceivable * USD_TO_AED,
+        inventoryAsset: inventoryValue * USD_TO_AED,
+        totalAssets: totalAssets * USD_TO_AED,
+        accountsPayable: accountsPayable * USD_TO_AED,
+        amexLiability: amexLiability * USD_TO_AED,
+        totalLiabilities: totalLiabilities * USD_TO_AED,
+        partnerCapital: partnerCapital * USD_TO_AED,
+        retainedEarnings: retainedEarnings * USD_TO_AED,
+        totalEquity: totalEquity * USD_TO_AED,
+        isBalanced: Math.abs(totalAssets * USD_TO_AED - ((totalLiabilities + totalEquity) * USD_TO_AED)) < 1
       }
     },
     expenseHistory: opex || [],
