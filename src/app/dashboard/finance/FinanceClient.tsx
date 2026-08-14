@@ -9,6 +9,7 @@ interface Props {
   repayments: any[]
   deals: any[]
   invoices: any[]
+  expenses?: any[]
   userRole?: string
   treasuryTransactions?: any[]
 }
@@ -49,7 +50,7 @@ function parseInputNumber(value: string) {
   return Number(value.replace(/,/g, ''))
 }
 
-export default function FinanceClient({ settings, wires, repayments, deals, invoices, userRole, treasuryTransactions = [] }: Props) {
+export default function FinanceClient({ settings, wires, repayments, deals, invoices, expenses = [], userRole, treasuryTransactions = [] }: Props) {
   const [isPending, startTransition] = useTransition()
   
   // Modals
@@ -118,9 +119,11 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
     salesProfitInflow += (Number(inv.total_amount) - invCOGS)
   })
 
-  // 3. Mobitech Pool (Profits)
+  // 3. Mobitech Pool (Net Profits after Operating Expenses)
+  const totalOpex = (expenses || []).reduce((s, e) => s + Number(e.amount || 0), 0)
+  const netSalesProfit = salesProfitInflow - totalOpex
   const amexCashbackLocked = deals.filter(d => d.cashback_received).reduce((s, d) => s + Number(d.cashback_amount || 0), 0)
-  const mobitechProfit = salesProfitInflow + amexCashbackLocked
+  const mobitechProfit = netSalesProfit + amexCashbackLocked
 
   // 4. Deal Outflows (All non-cancelled deals)
   const amexOutflow = deals
@@ -327,18 +330,26 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
         
         {/* MOBITECH POOL */}
         <div className="log-sum-card" style={{ borderLeft: '4px solid var(--accent-green)', cursor: 'pointer' }} onClick={() => setExpandedLedger(expandedLedger === 'MOBITECH' ? null : 'MOBITECH')}>
-          <h3 style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px', textTransform: 'uppercase' }}>Mobitech Profit Pool</h3>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Sales Profit</span>
-            <span style={{ fontWeight: 600 }}>{fmt(salesProfitInflow)}</span>
+          <h3 style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px', textTransform: 'uppercase' }}>Mobitech Profit Pool (Net)</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Gross Sales Profit</span>
+            <span style={{ fontWeight: 600, fontSize: '13px' }}>{fmt(salesProfitInflow)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Less: Operating Expenses</span>
+            <span style={{ fontWeight: 600, color: 'var(--status-red)', fontSize: '13px' }}>-{fmt(totalOpex)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Net Sales Profit</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '13px' }}>{fmt(netSalesProfit)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Locked Amex Cashback</span>
-            <span style={{ fontWeight: 600, color: 'var(--accent-green)' }}>{fmt(amexCashbackLocked)}</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Plus: Amex Cashback</span>
+            <span style={{ fontWeight: 600, color: 'var(--accent-green)', fontSize: '13px' }}>+{fmt(amexCashbackLocked)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
-            <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Total Realized Profit</span>
-            <span style={{ fontWeight: 700, color: 'var(--accent-green)' }}>{fmt(mobitechProfit)}</span>
+            <span style={{ color: 'var(--text-main)', fontWeight: 600, fontSize: '14px' }}>Total Net Realized Profit</span>
+            <span style={{ fontWeight: 800, color: 'var(--accent-green)', fontSize: '16px' }}>{fmt(mobitechProfit)}</span>
           </div>
         </div>
 

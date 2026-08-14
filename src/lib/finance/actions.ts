@@ -175,7 +175,7 @@ export async function deleteRepayment(id: string) {
 export async function getTreasuryData() {
   const supabase = await createClient()
   
-  const [{ data: deals }, { data: invoices }] = await Promise.all([
+  const [{ data: deals }, { data: invoices }, { data: expenses }] = await Promise.all([
     supabase.from('deals').select(`
       *,
       shipment_deals (
@@ -187,12 +187,14 @@ export async function getTreasuryData() {
     `),
     supabase.from('invoices')
       .select('*, invoice_line_items(*, deal_items(unit_cost)), clients(name)')
-      .eq('status', 'PAID')
+      .eq('status', 'PAID'),
+    supabase.from('operating_expenses').select('*')
   ])
     
   return {
     deals: deals || [],
-    invoices: invoices || []
+    invoices: invoices || [],
+    expenses: expenses || []
   }
 }
 

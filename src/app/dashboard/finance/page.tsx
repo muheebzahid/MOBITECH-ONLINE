@@ -14,7 +14,7 @@ async function FinanceContent() {
   const wires = await getWireTransfers()
   const repayments = await getRepayments()
   
-  const { deals, invoices } = await getTreasuryData()
+  const { deals, invoices, expenses } = await getTreasuryData()
   const treasuryTransactions = await getTreasuryTransactions()
   
   return (
@@ -24,6 +24,7 @@ async function FinanceContent() {
       repayments={repayments || []} 
       deals={deals || []}
       invoices={invoices || []}
+      expenses={expenses || []}
       userRole={role || undefined}
       treasuryTransactions={treasuryTransactions || []}
     />
