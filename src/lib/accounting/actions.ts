@@ -275,10 +275,8 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     .filter((inv: any) => inv.status !== 'CANCELLED' && inv.status !== 'VOIDED')
     .reduce((sum, inv) => sum + (Number(inv.balance_due) || 0), 0) : 0
 
-  const accountsPayable = deals ? deals
-    .filter((d: any) => d.status !== 'DEAL_CLOSED')
-    .reduce((sum, d) => sum + (Number(d.cash_amount) || Number(d.total_commitment)), 0) : 0
-
+  // Suppliers (ATT, ecoATM, T-Mobile) are paid 100% upfront at auction win time.
+  const accountsPayable = 0
   const amexLiability = amexStuck
   const liquidCash = Math.max(0, cashAvailable)
   const partnerCapital = (partners || []).reduce((sum: number, p: any) => sum + Number(p.current_balance || 0), 0)
