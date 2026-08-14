@@ -286,6 +286,53 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   const totalLiabilities = accountsPayable + amexLiability
   const totalEquity = partnerCapital + retainedEarnings
 
+  // Payment Cycle Waterfall Calculations (AMEX $500k Cap & Cash Pool $300k Settlement)
+  const cycleGroups: Record<string, { cycle: string; amexPurchases: number; collectedCash: number; totalInvoiced: number; openAR: number; dealsCount: number; isCapped: boolean }> = {}
+
+  if (deals) {
+    deals.forEach((deal: any) => {
+      const cycleDate = deal.amex_statement_date || deal.created_at || new Date().toISOString()
+      const cycleKey = cycleDate.slice(0, 7)
+      
+      if (!cycleGroups[cycleKey]) {
+        cycleGroups[cycleKey] = {
+          cycle: cycleKey,
+          amexPurchases: 0,
+          collectedCash: 0,
+          totalInvoiced: 0,
+          openAR: 0,
+          dealsCount: 0,
+          isCapped: false
+        }
+      }
+
+      const amexAmt = Number(deal.amex_amount) || (deal.funding_source === 'AMEX' ? Number(deal.total_commitment) : 0) || (deal.funding_source === 'MIXED' ? Number(deal.total_commitment) / 2 : 0)
+      cycleGroups[cycleKey].amexPurchases += amexAmt
+      cycleGroups[cycleKey].dealsCount += 1
+      cycleGroups[cycleKey].isCapped = cycleGroups[cycleKey].amexPurchases > amexLimit
+
+      const dealLineItems = (allLineItems || []).filter((li: any) => li.deal_id === deal.id && li.invoices?.status !== 'CANCELLED')
+      dealLineItems.forEach((li: any) => {
+        const inv = li.invoices
+        if (inv) {
+          cycleGroups[cycleKey].collectedCash += Number(inv.amount_paid || 0)
+          cycleGroups[cycleKey].openAR += Number(inv.balance_due || 0)
+        }
+      })
+    })
+  }
+
+  const waterfallCycles = Object.values(cycleGroups).map(cg => {
+    const cashPoolDrawn = Math.max(0, cg.amexPurchases - cg.collectedCash)
+    const isAmexFullyPaid = cg.collectedCash >= cg.amexPurchases
+    return {
+      ...cg,
+      cashPoolDrawn,
+      isAmexFullyPaid,
+      settlementStatus: isAmexFullyPaid ? 'FULLY_SETTLED_BY_INVOICES' : 'CASH_POOL_BUFFER_DRAWN'
+    }
+  }).sort((a, b) => b.cycle.localeCompare(a.cycle))
+
   return {
     usd: {
       revenue: totalRevenue,
@@ -318,7 +365,8 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         retainedEarnings,
         totalEquity,
         isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 1
-      }
+      },
+      waterfallCycles
     },
     aed: {
       revenue: totalRevenue * USD_TO_AED,
@@ -351,7 +399,15 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         retainedEarnings: retainedEarnings * USD_TO_AED,
         totalEquity: totalEquity * USD_TO_AED,
         isBalanced: Math.abs(totalAssets * USD_TO_AED - ((totalLiabilities + totalEquity) * USD_TO_AED)) < 1
-      }
+      },
+      waterfallCycles: waterfallCycles.map(c => ({
+        ...c,
+        amexPurchases: c.amexPurchases * USD_TO_AED,
+        collectedCash: c.collectedCash * USD_TO_AED,
+        totalInvoiced: c.totalInvoiced * USD_TO_AED,
+        openAR: c.openAR * USD_TO_AED,
+        cashPoolDrawn: c.cashPoolDrawn * USD_TO_AED
+      }))
     },
     expenseHistory: opex || [],
     partners: partners || [],

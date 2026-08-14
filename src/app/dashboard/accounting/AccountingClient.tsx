@@ -53,7 +53,7 @@ export default function AccountingClient({
 }) {
   const supabase = createClient()
   const [currency, setCurrency] = useState<'usd' | 'aed'>('usd')
-  const [activeTab, setActiveTab] = useState<'pnl' | 'balance_sheet' | 'treasury' | 'expenses'>('pnl')
+  const [activeTab, setActiveTab] = useState<'pnl' | 'balance_sheet' | 'waterfall' | 'treasury' | 'expenses'>('pnl')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showExpenseModal, setShowExpenseModal] = useState(false)
@@ -321,6 +321,7 @@ export default function AccountingClient({
         {[
           { id: 'pnl', label: '📊 Profit & Loss (YTD)' },
           { id: 'balance_sheet', label: '🏛️ Balance Sheet (GAAP)' },
+          { id: 'waterfall', label: '🌊 Cycle Waterfall Cash Flow' },
           { id: 'treasury', label: '🏦 Treasury & Partners' },
           { id: 'expenses', label: '📄 Expense Ledger' }
         ].map(tab => (
@@ -343,6 +344,143 @@ export default function AccountingClient({
           </button>
         ))}
       </div>
+
+      {/* CYCLE WATERFALL CASH FLOW TAB */}
+      {activeTab === 'waterfall' && (() => {
+        const cycles = (data as any).waterfallCycles || []
+        const totalAmexLimit = data.treasury?.amexLimit || 500000
+        const totalCashLimit = data.treasury?.cashLimit || 300000
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            {/* Rule Header Banner */}
+            <div style={{
+              padding: '20px 24px',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.12) 100%)',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '24px' }}>🌊</span>
+                  <div>
+                    <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      Statement Cycle Cash Flow Waterfall Engine
+                    </h3>
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Automated Statement Settlement & Shortfall Auto-Sweep Rules
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ padding: '8px 16px', background: 'var(--bg-elevated)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>AMEX Cycle Cap: </span>
+                    <strong style={{ color: '#a855f7' }}>{formatCurrency(totalAmexLimit)}</strong>
+                  </div>
+                  <div style={{ padding: '8px 16px', background: 'var(--bg-elevated)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Cash Pool Buffer: </span>
+                    <strong style={{ color: '#38bdf8' }}>{formatCurrency(totalCashLimit)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Waterfall Steps Explanation */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '4px' }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#a855f7' }}>STEP 1: AMEX PURCHASES</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Purchases capped at $500k per cycle. Suppliers paid 100% upfront at win date.
+                  </div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#34d399' }}>STEP 2: INVOICE CASH WATERFALL</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Customer invoice cash collected in cycle directly pays off AMEX statement balance.
+                  </div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8' }}>STEP 3: CASH POOL AUTO-SWEEP</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    If collected cash &lt; statement due, remaining shortfall is auto-drawn from $300k Cash Pool.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cycle Waterfall Grid Table */}
+            <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Payment Cycles Settlement Matrix</h3>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{cycles.length} Cycle(s) Recorded</span>
+              </div>
+
+              {cycles.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No statement cycles recorded yet.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '12px', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '14px 20px' }}>Payment Cycle</th>
+                        <th style={{ padding: '14px 20px' }}>Deals</th>
+                        <th style={{ padding: '14px 20px' }}>AMEX Purchases ($500k Cap)</th>
+                        <th style={{ padding: '14px 20px' }}>Invoice Cash Collected</th>
+                        <th style={{ padding: '14px 20px' }}>Cash Pool Auto-Sweep</th>
+                        <th style={{ padding: '14px 20px' }}>Remaining Open AR</th>
+                        <th style={{ padding: '14px 20px' }}>Settlement Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cycles.map((c: any) => (
+                        <tr key={c.cycle} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '16px 20px', fontWeight: 700 }}>{c.cycle}</td>
+                          <td style={{ padding: '16px 20px', color: 'var(--text-muted)' }}>{c.dealsCount} deal(s)</td>
+                          <td style={{ padding: '16px 20px', fontWeight: 600 }}>
+                            {formatCurrency(c.amexPurchases)}
+                            {c.isCapped && (
+                              <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '4px', background: 'rgba(239,68,68,0.2)', color: '#f87171', fontSize: '11px', fontWeight: 800 }}>
+                                ⚠️ CAPPED &gt; $500K
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '16px 20px', color: '#34d399', fontWeight: 600 }}>
+                            {formatCurrency(c.collectedCash)}
+                          </td>
+                          <td style={{ padding: '16px 20px', color: c.cashPoolDrawn > 0 ? '#fbbf24' : 'var(--text-muted)', fontWeight: 600 }}>
+                            {c.cashPoolDrawn > 0 ? `Shortfall: ${formatCurrency(c.cashPoolDrawn)}` : '$0.00 (Covered)'}
+                          </td>
+                          <td style={{ padding: '16px 20px', color: 'var(--text-muted)' }}>
+                            {formatCurrency(c.openAR)}
+                          </td>
+                          <td style={{ padding: '16px 20px' }}>
+                            {c.isAmexFullyPaid ? (
+                              <span style={{ padding: '4px 12px', borderRadius: '20px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontSize: '12px', fontWeight: 700 }}>
+                                ✅ SETTLED BY INVOICE CASH
+                              </span>
+                            ) : (
+                              <span style={{ padding: '4px 12px', borderRadius: '20px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontSize: '12px', fontWeight: 700 }}>
+                                🛡️ CASH POOL AUTO-SWEEPT
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )
+      })()}
 
       {/* BALANCE SHEET TAB */}
       {activeTab === 'balance_sheet' && (() => {
