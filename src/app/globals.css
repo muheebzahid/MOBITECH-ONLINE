@@ -1057,22 +1057,124 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
    ============================== */
 .d-mobile-only { display: none !important; }
 
+/* Mobile App Header & Dock Bar */
+.mobile-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.mobile-hamburger-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mobile-brand-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-app-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+.user-avatar-sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-purple);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Mobile Bottom Navigation Dock (iOS / Phone Native Bar) */
+.mobile-bottom-dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: rgba(17, 19, 24, 0.95);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 900;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-dock-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.mobile-dock-icon {
+  font-size: 18px;
+}
+
+.mobile-dock-active {
+  color: var(--accent-purple);
+  font-weight: 700;
+}
+
+.mobile-dock-active .mobile-dock-icon {
+  transform: translateY(-2px);
+}
+
 @media (max-width: 768px) {
-  .d-mobile-only { display: block !important; }
-  
-  .mobile-sidebar-toggle {
-    background: var(--bg-surface);
-    border: none;
-    border-bottom: 1px solid var(--border-subtle);
-    color: var(--text-primary);
-    padding: 16px;
-    font-size: 16px;
-    font-weight: 600;
-    text-align: left;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
+  .d-mobile-only { display: flex !important; }
+
+  .erp-main {
+    padding-bottom: 80px !important;
+  }
+
+  /* Prevent iOS zoom on input focus */
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px !important;
   }
   
   .page-root { padding: 16px; }
@@ -1083,7 +1185,7 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
   .modules-grid { grid-template-columns: 1fr; padding: 16px; }
   .erp-header { padding: 0 16px; }
   .deals-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .deals-table { min-width: 700px; /* Ensure tables don't squash on mobile */ }
+  .deals-table { min-width: 700px; }
   
   .sidebar {
     position: fixed;
@@ -1098,14 +1200,14 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
     transform: translateX(0);
   }
   
-  .modal-box { width: 95%; max-width: none; }
-  .modal-header { padding: 20px; }
-  .modal-form { padding: 20px; }
+  .modal-box { width: 95.5% !important; max-width: none !important; max-height: 90vh !important; overflow-y: auto !important; }
+  .modal-header { padding: 16px 20px; }
+  .modal-form { padding: 16px 20px; }
   .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
   
   .deal-detail-header { flex-direction: column; gap: 12px; }
   .dh-actions { width: 100%; flex-wrap: wrap; }
-  .dh-actions button { flex: 1; }
+  .dh-actions button { flex: 1; min-height: 42px; }
   
   .treasury-card { padding: 16px; }
   .tc-sub-row { grid-template-columns: 1fr; }

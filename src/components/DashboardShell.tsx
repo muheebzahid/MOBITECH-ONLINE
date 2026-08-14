@@ -207,13 +207,50 @@ export default function DashboardShell({ user, children }: Props) {
 
       {/* Main Content */}
       <main className="erp-main">
-        <button 
-          className="mobile-sidebar-toggle d-mobile-only" 
-          onClick={() => setSidebarOpen(true)}
-        >
-          ☰ Menu
-        </button>
+        {/* Mobile App Header Bar */}
+        <header className="mobile-top-bar d-mobile-only">
+          <button 
+            className="mobile-hamburger-btn" 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Open Navigation Menu"
+          >
+            ☰
+          </button>
+          
+          <div className="mobile-brand-title">
+            <span className="mobile-app-name">Mobitech ERP</span>
+          </div>
+
+          <div className="mobile-user-badge">
+            <span className="user-avatar-sm">{user.email?.charAt(0).toUpperCase()}</span>
+          </div>
+        </header>
+
         {children}
+
+        {/* Mobile Bottom Dock Navigation Bar */}
+        <nav className="mobile-bottom-dock d-mobile-only">
+          {[
+            { id: 'home', label: 'Home', icon: '⊞', href: '/dashboard' },
+            { id: 'deals', label: 'Deals', icon: '◈', href: '/dashboard/deals' },
+            { id: 'inventory', label: 'Stock', icon: '📦', href: '/dashboard/inventory' },
+            { id: 'sales', label: 'Invoices', icon: '📄', href: '/dashboard/sales' },
+            { id: 'accounting', label: 'Finance', icon: '📊', href: '/dashboard/accounting' }
+          ].map(dock => {
+            const isDockActive = pathname === dock.href || (dock.href !== '/dashboard' && pathname.startsWith(dock.href))
+            return (
+              <Link 
+                key={dock.id} 
+                href={dock.href}
+                className={`mobile-dock-item ${isDockActive ? 'mobile-dock-active' : ''}`}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <span className="mobile-dock-icon">{dock.icon}</span>
+                <span className="mobile-dock-label">{dock.label}</span>
+              </Link>
+            )
+          })}
+        </nav>
       </main>
     </div>
   )
