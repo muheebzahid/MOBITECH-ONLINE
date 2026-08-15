@@ -134,7 +134,7 @@ export async function updateInventoryLocation(itemId: string, newLocation: strin
   return { success: true }
 }
 
-export async function updateRefurbStage(itemId: string, newStage: string, updates: { repair_cost?: number, qc_document_url?: string } = {}) {
+export async function updateRefurbStage(itemId: string, newStage: string, updates: { repair_cost?: number, qc_document_url?: string, notes?: string } = {}) {
   const supabase = await createClient()
   
   const { data: item } = await supabase.from('inventory_items').select('*').eq('id', itemId).single()
@@ -142,6 +142,7 @@ export async function updateRefurbStage(itemId: string, newStage: string, update
   const payload: any = { refurb_stage: newStage }
   if (updates.repair_cost !== undefined) payload.repair_cost = updates.repair_cost
   if (updates.qc_document_url !== undefined) payload.qc_document_url = updates.qc_document_url
+  if (updates.notes !== undefined) payload.notes = updates.notes
 
   const { error } = await supabase
     .from('inventory_items')

@@ -84,6 +84,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   
   const [editingQc, setEditingQc] = useState<string | null>(null)
   const [qcDoc, setQcDoc] = useState('')
+  const [qcNotes, setQcNotes] = useState('')
 
   // Add Inventory Modal State
   const [showAddModal, setShowAddModal] = useState(false)
@@ -170,7 +171,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
 
   const handleSaveQc = (itemId: string) => {
     startTransition(async () => {
-      await updateRefurbStage(itemId, 'QC_DONE', { qc_document_url: qcDoc })
+      await updateRefurbStage(itemId, 'QC_DONE', { qc_document_url: qcDoc, notes: qcNotes })
       setEditingQc(null)
     })
   }
@@ -502,15 +503,26 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                     <td style={{textAlign:'right', fontWeight: 600, color: 'var(--accent-teal)'}}>{fmtS(item.total_cost)}</td>
                     <td>
                       {editingQc === item.id ? (
-                        <div style={{display:'flex', gap:'4px'}}>
-                          <input type="text" className="form-input" placeholder="Doc URL" style={{width:'120px', padding:'4px'}} value={qcDoc} onChange={e=>setQcDoc(e.target.value)} />
-                          <button className="btn-primary" style={{padding:'4px 8px'}} onClick={()=>handleSaveQc(item.id)}>Save</button>
+                        <div style={{display:'flex', flexDirection:'column', gap:'4px', minWidth:'150px'}}>
+                          <input type="text" className="form-input" placeholder="Doc URL" style={{width:'100%', padding:'4px', fontSize:'12px'}} value={qcDoc} onChange={e=>setQcDoc(e.target.value)} />
+                          <input type="text" className="form-input" placeholder="QC comment..." style={{width:'100%', padding:'4px', fontSize:'12px'}} value={qcNotes} onChange={e=>setQcNotes(e.target.value)} />
+                          <div style={{display:'flex', gap:'4px'}}>
+                            <button className="btn-primary" style={{padding:'2px 8px', fontSize:'11px'}} onClick={()=>handleSaveQc(item.id)}>Save</button>
+                            <button className="btn-ghost" style={{padding:'2px 8px', fontSize:'11px', border:'1px solid var(--border)'}} onClick={()=>setEditingQc(null)}>Cancel</button>
+                          </div>
                         </div>
                       ) : (
-                        <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
-                          {item.qc_document_url ? <a href={item.qc_document_url} target="_blank" rel="noreferrer" style={{color:'var(--accent-blue)', fontSize:'12px'}}>View Doc</a> : <span style={{color:'var(--text-muted)', fontSize:'12px'}}>No doc</span>}
-                          {activeStage === 'QC_DONE' && role !== 'VIEW_ONLY' && (
-                            <button className="btn-ghost" style={{padding:'2px 6px'}} onClick={()=>{setEditingQc(item.id); setQcDoc(item.qc_document_url||'')}}>✎</button>
+                        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'2px'}}>
+                          <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
+                            {item.qc_document_url ? <a href={item.qc_document_url} target="_blank" rel="noreferrer" style={{color:'var(--accent-blue)', fontSize:'12px'}}>View Doc</a> : <span style={{color:'var(--text-muted)', fontSize:'12px'}}>No doc</span>}
+                            {activeStage === 'QC_DONE' && role !== 'VIEW_ONLY' && (
+                              <button className="btn-ghost" style={{padding:'2px 6px'}} onClick={()=>{setEditingQc(item.id); setQcDoc(item.qc_document_url||''); setQcNotes(item.notes||'')}}>✎</button>
+                            )}
+                          </div>
+                          {item.notes && (
+                            <div style={{fontSize:'11px', color:'var(--text-muted)', fontStyle:'italic', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={item.notes}>
+                              Comment: {item.notes}
+                            </div>
                           )}
                         </div>
                       )}
@@ -529,7 +541,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                         {activeStage === 'QC_DONE' && (
                           <>
                             {role !== 'VIEW_ONLY' && <button className="btn-ghost" title="Move back to Refurbishing" style={{padding:'4px 8px'}} onClick={()=>handleMoveStage(item.id, 'HANDED_TO_REFURBISH')}>↶</button>}
-                            {role !== 'VIEW_ONLY' && <button className="btn-primary" disabled={!item.qc_document_url} onClick={()=>handleMoveStage(item.id, 'READY_TO_SELL')}>Ready to Sell</button>}
+                            {role !== 'VIEW_ONLY' && <button className="btn-primary" onClick={()=>handleMoveStage(item.id, 'READY_TO_SELL')}>Ready to Sell</button>}
                           </>
                         )}
 
