@@ -109,7 +109,21 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
   
   if (status === 'DELIVERED') {
     await supabase.from('inventory_items')
-      .update({ status: 'SOLD' })
+      .update({ status: 'SOLD', refurb_stage: 'SOLD' })
+      .eq('online_order_id', id)
+  } else if (status === 'CANCELLED') {
+    await supabase.from('inventory_items')
+      .update({
+        online_order_id: null,
+        online_order_item_id: null,
+        status: 'AVAILABLE',
+        refurb_stage: 'READY_TO_SELL',
+        location: 'DUBAI_WAREHOUSE'
+      })
+      .eq('online_order_id', id)
+  } else {
+    await supabase.from('inventory_items')
+      .update({ status: 'ASSIGNED', refurb_stage: 'ASSIGNED' })
       .eq('online_order_id', id)
   }
 
@@ -135,6 +149,7 @@ export async function deleteOnlineOrder(id: string, platform: string) {
         online_order_id: null,
         online_order_item_id: null,
         status: 'AVAILABLE',
+        refurb_stage: 'READY_TO_SELL',
         location: 'DUBAI_WAREHOUSE'
       })
       .in('id', itemIds)
@@ -166,12 +181,20 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
   const targetLocation = platform === 'AMAZON' ? 'AMAZON_FBA' : 'REVIBE'
 
   if (item) {
+    // Check if it's already assigned to this order (no-op)
+    if (item.online_order_id === orderId) {
+      return { success: true }
+    }
     // Check if it's already assigned somewhere else
     if (item.online_order_id && item.online_order_id !== orderId) {
       return { error: `IMEI already assigned to order ${item.online_order_id}` }
     }
     if (item.invoice_id) {
       return { error: 'IMEI already sold via wholesale invoice' }
+    }
+    // Enforce that device must be in READY_TO_SELL stage
+    if (item.refurb_stage !== 'READY_TO_SELL') {
+      return { error: `Device is not in READY_TO_SELL stage. Current stage: ${item.refurb_stage || 'None'}` }
     }
 
     // Assign existing item
@@ -181,6 +204,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
         online_order_id: orderId,
         online_order_item_id: orderItemId,
         status: 'ASSIGNED',
+        refurb_stage: 'ASSIGNED',
         location: targetLocation
       })
       .eq('id', item.id)
@@ -221,6 +245,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
         logistics_cost: 0,
         location: targetLocation,
         status: 'ASSIGNED',
+        refurb_stage: 'ASSIGNED',
         online_order_id: orderId,
         online_order_item_id: orderItemId
       })
@@ -244,6 +269,7 @@ export async function removeImeiFromOrderItem(orderId: string, itemId: string, p
       online_order_id: null,
       online_order_item_id: null,
       status: 'AVAILABLE',
+      refurb_stage: 'READY_TO_SELL',
       location: 'DUBAI_WAREHOUSE'
     })
     .eq('id', itemId)
