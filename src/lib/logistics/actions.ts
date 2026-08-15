@@ -411,12 +411,25 @@ export async function deleteShipment(shipmentId: string) {
 
 export async function updateShipmentHandler(shipmentId: string, handledBy: string | null) {
   const supabase = await createClient()
+
+  const { data: existing } = await supabase.from('shipments').select('handled_by').eq('id', shipmentId).single()
+
   const { error } = await supabase
     .from('shipments')
     .update({ handled_by: handledBy })
     .eq('id', shipmentId)
     
   if (error) return { error: error.message }
+
+  await logAudit({
+    tableName: 'shipments',
+    recordId: shipmentId,
+    action: 'UPDATE',
+    oldData: { handled_by: existing?.handled_by || null },
+    newData: { handled_by: handledBy }
+  })
+
   revalidatePath('/dashboard/logistics')
+  revalidatePath(`/dashboard/logistics/${shipmentId}`)
   return { success: true }
 }

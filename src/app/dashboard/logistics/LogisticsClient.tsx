@@ -21,7 +21,7 @@ interface Props {
   shipmentsPage?: number
 }
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getShipments } from '@/lib/logistics/actions'
 
 export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTotal = 0, shipmentsPage = 0 }: Props) {
@@ -32,10 +32,12 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
     staleTime: 30 * 1000,
   })
 
+  const queryClient = useQueryClient()
   const currentShipments = shipmentsResult?.data || shipments
   const router = useRouter()
   const role = useRole()
   const [isPending, startTransition] = useTransition()
+  const [handlerOverrides, setHandlerOverrides] = useState<Record<string, string | null>>({})
   const [showCreate, setShowCreate] = useState(false)
   const [selectedDeals, setSelectedDeals] = useState<string[]>([])
   const [form, setForm] = useState({ carrier: '', awb_number: '', sb_invoice_number: '', sb_fee: '', usa_to_usa_cost: '', usa_to_dxb_cost: '', pickup_ref: '', pickup_date: '', notes: '' })
@@ -232,15 +234,17 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
                     <td>
                       <select 
                         className="form-input" 
-                        style={{ padding: '4px 8px', fontSize: '11px', height: 'auto', width: 'auto' }}
-                        value={sh.handled_by || ''}
+                        style={{ padding: '4px 8px', fontSize: '11px', height: 'auto', width: 'auto', background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        value={handlerOverrides[sh.id] !== undefined ? (handlerOverrides[sh.id] || '') : (sh.handled_by || '')}
                         onChange={(e) => {
                           const val = e.target.value || null
+                          setHandlerOverrides(prev => ({ ...prev, [sh.id]: val }))
                           startTransition(async () => {
                             await updateShipmentHandler(sh.id, val)
+                            queryClient.invalidateQueries({ queryKey: ['shipments'] })
+                            router.refresh()
                           })
                         }}
-                        disabled={isPending}
                       >
                         <option value="">- Select -</option>
                         <option value="SB Technology">SB Technology</option>
