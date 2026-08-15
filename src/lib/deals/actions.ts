@@ -960,24 +960,44 @@ export async function moveSkuToOnlineInventory(
     clientId = newClient.id
   }
 
-  // Create invoice
-  const { data: invoice, error: invError } = await supabase
+  // Check if there is an existing ISSUED invoice for Internal - Online Inventory
+  const { data: existingInvoice, error: findError } = await supabase
     .from('invoices')
-    .insert({
-      client_id: clientId,
-      customer_name: 'Internal - Online Inventory',
-      invoice_number: `INV-ONL-${Date.now()}`,
-      status: 'PAID',
-    })
-    .select()
-    .single()
-  if (invError) return { error: invError.message }
+    .select('id, invoice_number')
+    .eq('customer_name', 'Internal - Online Inventory')
+    .eq('status', 'ISSUED')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (findError) {
+    console.error('Error finding existing internal invoice:', findError.message)
+  }
+
+  let invoiceId = existingInvoice?.id
+
+  if (!invoiceId) {
+    // Create new invoice with status ISSUED
+    const { data: invoice, error: invError } = await supabase
+      .from('invoices')
+      .insert({
+        client_id: clientId,
+        customer_name: 'Internal - Online Inventory',
+        invoice_number: `INV-ONL-${Date.now()}`,
+        status: 'ISSUED',
+      })
+      .select()
+      .single()
+      
+    if (invError) return { error: invError.message }
+    invoiceId = invoice.id
+  }
 
   // Create invoice line item
   const { error: lineError } = await supabase
     .from('invoice_line_items')
     .insert({
-      invoice_id: invoice.id,
+      invoice_id: invoiceId,
       deal_id: dealId,
       deal_item_id: dealItemId,
       description: `Moved to online inventory: ${originalModel}`,
