@@ -285,6 +285,13 @@ export async function addLineItem(invoiceId: string, formData: FormData) {
     payload.deal_item_id = dealItemId
   }
 
+  if (dealId && dealId !== '') {
+    const stockCheck = await checkStockAvailability(dealId, dealItemId === '' ? null : dealItemId, quantity)
+    if (!stockCheck.available) {
+      return { error: stockCheck.error }
+    }
+  }
+
   const { error } = await supabase.from('invoice_line_items').insert(payload)
   if (error) return { error: error.message }
   
@@ -322,7 +329,15 @@ export async function removeLineItem(invoiceId: string, lineItemId: string) {
 
 export async function updateLineItemDeal(invoiceId: string, lineItemId: string, dealId: string | null, dealItemId: string | null = null) {
   const supabase = await createClient()
-  const { data: oldItem } = await supabase.from('invoice_line_items').select('deal_id').eq('id', lineItemId).single()
+  const { data: oldItem } = await supabase.from('invoice_line_items').select('deal_id, quantity').eq('id', lineItemId).single()
+
+  if (dealId) {
+    const quantity = oldItem?.quantity || 1
+    const stockCheck = await checkStockAvailability(dealId, dealItemId, quantity, lineItemId)
+    if (!stockCheck.available) {
+      return { error: stockCheck.error }
+    }
+  }
 
   const payload: any = { deal_id: dealId || null }
   payload.deal_item_id = dealItemId || null
@@ -453,6 +468,87 @@ export async function getAvailableDeals() {
     return deal
   })
 }
+
+async function checkStockAvailability(
+  dealId: string,
+  dealItemId: string | null,
+  quantityRequested: number,
+  currentLineItemId?: string
+) {
+  const deals = await getAvailableDeals()
+  const deal = deals.find((d: any) => d.id === dealId)
+  if (!deal) {
+    return { available: false, remaining: 0, error: 'Deal not found' }
+  }
+
+  if (dealItemId) {
+    const item = (deal.items || []).find((i: any) => i.id === dealItemId)
+    if (!item) {
+      return { available: false, remaining: 0, error: 'SKU Item not found in this deal' }
+    }
+    
+    // Calculate current item allocated excluding the line item we are modifying
+    const supabase = await createClient()
+    let query = supabase
+      .from('invoice_line_items')
+      .select('quantity, invoices!inner(status)')
+      .eq('deal_item_id', dealItemId)
+      .neq('invoices.status', 'CANCELLED')
+      .neq('invoices.status', 'VOIDED')
+
+    if (currentLineItemId) {
+      query = query.neq('id', currentLineItemId)
+    }
+    const { data: allocatedList } = await query
+    const allocated = (allocatedList || []).reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+
+    // Also deduct unattributed deal-level sales if single item deal
+    let unattributed = 0
+    if (deal.items.length === 1) {
+      let queryUnattributed = supabase
+        .from('invoice_line_items')
+        .select('quantity, invoices!inner(status)')
+        .eq('deal_id', dealId)
+        .is('deal_item_id', null)
+        .neq('invoices.status', 'CANCELLED')
+        .neq('invoices.status', 'VOIDED')
+
+      if (currentLineItemId) {
+        queryUnattributed = queryUnattributed.neq('id', currentLineItemId)
+      }
+      const { data: unattributedList } = await queryUnattributed
+      unattributed = (unattributedList || []).reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+    }
+
+    const remaining = Math.max(0, (item.quantity || 0) - allocated - unattributed)
+    if (quantityRequested > remaining) {
+      return { available: false, remaining, error: `Requested quantity (${quantityRequested}) exceeds available SKU stock (${remaining} left).` }
+    }
+  } else {
+    // Deal-level check (unattributed)
+    const supabase = await createClient()
+    let query = supabase
+      .from('invoice_line_items')
+      .select('quantity, invoices!inner(status)')
+      .eq('deal_id', dealId)
+      .neq('invoices.status', 'CANCELLED')
+      .neq('invoices.status', 'VOIDED')
+
+    if (currentLineItemId) {
+      query = query.neq('id', currentLineItemId)
+    }
+    const { data: allocatedList } = await query
+    const allocated = (allocatedList || []).reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+
+    const remaining = Math.max(0, (deal.quantity || 0) - allocated)
+    if (quantityRequested > remaining) {
+      return { available: false, remaining, error: `Requested quantity (${quantityRequested}) exceeds available deal stock (${remaining} left).` }
+    }
+  }
+
+  return { available: true, remaining: 0 }
+}
+
 
 // ── Approvals ───────────────────────────────────────────────
 export async function getPendingInvoices() {
