@@ -1755,6 +1755,8 @@ export type Database = {
         | "HANDED_TO_REFURBISH"
         | "QC_DONE"
         | "READY_TO_SELL"
+        | "ASSIGNED"
+        | "SOLD"
       shipment_status:
         | "PENDING"
         | "AT_SB_TECHNOLOGY"
@@ -1984,6 +1986,8 @@ export const Constants = {
         "HANDED_TO_REFURBISH",
         "QC_DONE",
         "READY_TO_SELL",
+        "ASSIGNED",
+        "SOLD",
       ],
       shipment_status: [
         "PENDING",
