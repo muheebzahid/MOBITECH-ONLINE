@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { getSyncHistory } from '@/lib/admin/actions'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 export default function SyncHistoryClient({ initialJobs }: { initialJobs: any[] }) {
   const { data: jobs = initialJobs } = useQuery({
@@ -18,6 +19,22 @@ export default function SyncHistoryClient({ initialJobs }: { initialJobs: any[] 
           <h1 className="text-2xl font-bold text-slate-100">🔄 Update Live Sync History</h1>
           <p className="text-sm text-slate-400 mt-1">Audit log of all cloud synchronization jobs</p>
         </div>
+        <button 
+          onClick={() => {
+            const headers = ['Job ID', 'Executed At', 'Status', 'Total Records', 'Error / Notes']
+            const rows = jobs.map(j => [
+              j.id,
+              new Date(j.created_at || j.executed_at).toLocaleString(),
+              j.status || 'COMPLETED',
+              j.total_records || 0,
+              j.error || j.notes || ''
+            ])
+            exportToExcel('mobitech_sync_history_export', headers, rows)
+          }}
+          style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #10b981', background: 'transparent', color: '#34d399', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+        >
+          📊 Export to Excel
+        </button>
       </div>
 
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-xl">

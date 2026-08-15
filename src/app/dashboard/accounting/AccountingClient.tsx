@@ -6,6 +6,7 @@ import { logExpense, editExpense, deleteExpense } from '@/lib/accounting/actions
 import { createClient } from '@/lib/supabase/client'
 import TreasuryControlSection from '@/components/accounting/TreasuryControlSection'
 import { TreasuryTransaction } from '@/lib/accounting/treasuryActions'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 type FinancialSummary = {
   revenue: number
@@ -293,6 +294,47 @@ export default function AccountingClient({
               AED
             </button>
           </div>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              if (activeTab === 'expenses') {
+                const headers = ['Description', 'Category', 'Amount ($)', 'Expense Date', 'Reference Link']
+                const rows = expenseHistory.map(e => [e.description, e.category, e.amount, e.expense_date, e.reference_link || ''])
+                exportToExcel('mobitech_expenses_export', headers, rows)
+              } else if (activeTab === 'balance_sheet') {
+                const bs = (data as any).balanceSheet
+                const headers = ['Category', 'Account Code & Description', 'Amount ($)']
+                const rows = [
+                  ['ASSETS', '1010 - Cash & Liquid Treasury', bs?.liquidCash || 0],
+                  ['ASSETS', '1100 - Accounts Receivable', bs?.accountsReceivable || 0],
+                  ['ASSETS', '1200 - Inventory Asset Valuation', bs?.inventoryAsset || 0],
+                  ['ASSETS', 'TOTAL ASSETS', bs?.totalAssets || 0],
+                  ['LIABILITIES', '2010 - Accounts Payable (Suppliers)', bs?.accountsPayable || 0],
+                  ['LIABILITIES', '2020 - AMEX Credit Line Deployed', bs?.amexLiability || 0],
+                  ['LIABILITIES', 'TOTAL LIABILITIES', bs?.totalLiabilities || 0],
+                  ['EQUITY', '3010 - Partner Capital Accounts', bs?.partnerCapital || 0],
+                  ['EQUITY', '3020 - Retained Net Earnings', bs?.retainedEarnings || 0],
+                  ['EQUITY', 'TOTAL OWNER\'S EQUITY', bs?.totalEquity || 0]
+                ]
+                exportToExcel('mobitech_balance_sheet_export', headers, rows)
+              } else {
+                const headers = ['Line Item', 'Amount ($)']
+                const rows = [
+                  ['Sales Revenue (Invoiced)', data.revenue],
+                  ['Less: Cost of Goods (Deals)', data.cogsDevices],
+                  ['Less: Logistics Charges (Deals)', data.cogsLogistics],
+                  ['Gross Profit', data.grossProfit],
+                  ['Plus: Amex Cashback Profit', data.amexProfit],
+                  ['Operating Expenses', data.opex],
+                  ['Net Profit / (Loss)', data.netProfit]
+                ]
+                exportToExcel('mobitech_pnl_statement_export', headers, rows)
+              }
+            }}
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
           {userRole !== 'VIEW_ONLY' && (
             <>
               <button

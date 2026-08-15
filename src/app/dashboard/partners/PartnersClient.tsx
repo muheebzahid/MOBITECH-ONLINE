@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { requestWithdrawal, approveTransaction, rejectTransaction, distributeProfit, injectCapital } from '@/lib/partners/actions'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 interface Props {
   netProfit: number
@@ -84,7 +85,18 @@ export default function PartnersClient({ netProfit, partners, pendingWithdrawals
           <h1 className="page-title">Partner Accounting</h1>
           <p className="page-sub">Manage capital accounts, equity shares, and profit distributions.</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Partner Name', 'Equity Share (%)', 'Capital Balance ($)']
+              const rows = partners.map(p => [p.name, p.equity_share || 0, p.current_balance || p.balance || 0])
+              exportToExcel('mobitech_partners_capital_export', headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
           <button 
             className="btn-primary" 
             style={{ background: 'var(--accent-purple)' }}

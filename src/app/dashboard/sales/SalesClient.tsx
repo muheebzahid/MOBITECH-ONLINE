@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { INVOICE_STATUSES, type InvoiceStatus } from '@/lib/sales/constants'
 import { createInvoice, updateInvoiceApproval } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 function fmtS(n: number) {
   const parts = Number(n || 0).toString().split('.')
@@ -135,7 +136,27 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           <h1 className="page-title">Sales & Invoicing</h1>
           <p className="page-subtitle">Manage wholesale invoices and reconcile payments</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Invoice Number', 'Customer Name', 'Issue Date', 'Due Date', 'Total Amount ($)', 'Amount Paid ($)', 'Balance Due ($)', 'Status']
+              const rows = sortedInvoices.map(i => [
+                i.invoice_number,
+                i.customer_name || i.clients?.name || '',
+                i.issue_date || '',
+                i.due_date || '',
+                i.total_amount || 0,
+                i.amount_paid || 0,
+                i.balance_due || 0,
+                i.status || ''
+              ])
+              exportToExcel('mobitech_sales_invoices_export', headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
           <select 
             className="form-input" 
             value={currentMonth || 'all'}

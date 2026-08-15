@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { createOnlineOrder, bulkCreateOnlineOrders, bulkFulfillAndShipOrders, assignImeiToOrderItem, deleteOnlineOrder } from '@/lib/online-sales/actions'
 import { useRole } from '@/components/RoleProvider'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 interface Props {
   platform: 'AMAZON' | 'REVIBE'
@@ -340,7 +341,27 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
           <h1 className="page-title">{platform === 'AMAZON' ? 'Amazon Orders' : 'Revibe Orders'}</h1>
           <p className="page-subtitle">Track orders, manage SKU details, and scan outbound device IMEIs</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Order Number', 'Platform', 'Customer Name', 'Order Date', 'Total Amount ($)', 'Status', 'Fulfillment Date', 'Notes']
+              const rows = currentOrders.map(o => [
+                o.order_number,
+                o.platform || platform,
+                o.customer_name || '',
+                o.order_date || '',
+                o.total_amount || 0,
+                o.status || '',
+                o.fulfillment_date || '',
+                o.notes || ''
+              ])
+              exportToExcel(`mobitech_${platform.toLowerCase()}_orders_export`, headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
           <button className="btn-ghost" style={{ border: '1px solid var(--border)' }} onClick={handleDownloadTemplate}>
             Download Template
           </button>

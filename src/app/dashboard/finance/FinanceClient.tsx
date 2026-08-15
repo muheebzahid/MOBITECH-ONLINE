@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { updateTreasurySettings, logWireTransfer, logRepayment, updateWireTransfer, deleteWireTransfer, updateRepayment, deleteRepayment } from '@/lib/finance/actions'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 interface Props {
   settings: any
@@ -288,19 +289,37 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
           <h1 className="page-title">Treasury Control</h1>
           <p className="page-sub">Manage global limits, wire transfers, capital repayments, and inter-pool transfers.</p>
         </div>
-        {userRole !== 'VIEW_ONLY' && (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn-ghost" style={{ border: '1px solid var(--border)' }} onClick={() => setShowSettingsModal(true)}>
-              ⚙️ Edit Limits
-            </button>
-            <button className="btn-primary" style={{ background: 'var(--accent-purple)' }} onClick={() => openWireModal()}>
-              💸 Log Outbound Wire
-            </button>
-            <button className="btn-primary" style={{ background: 'var(--accent-green)', color: '#000' }} onClick={() => openRepayModal()}>
-              🏦 Log Transfer & Repayment
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Account Pool', 'Facility / Deposit ($)', 'Available Balance ($)']
+              const rows = [
+                ['AMEX Facility', amexLimitVal, amexAvailable],
+                ['Turbo Cash Pool', turboLimitVal, turboAvailable],
+                ['SB Tech Cash Pool', sbLimitVal, sbAvailable],
+                ['Mobitech Net Profit Pool', '-', mobitechProfit]
+              ]
+              exportToExcel('mobitech_treasury_capital_export', headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
+          {userRole !== 'VIEW_ONLY' && (
+            <>
+              <button className="btn-ghost" style={{ border: '1px solid var(--border)' }} onClick={() => setShowSettingsModal(true)}>
+                ⚙️ Edit Limits
+              </button>
+              <button className="btn-primary" style={{ background: 'var(--accent-purple)' }} onClick={() => openWireModal()}>
+                💸 Log Outbound Wire
+              </button>
+              <button className="btn-primary" style={{ background: 'var(--accent-green)', color: '#000' }} onClick={() => openRepayModal()}>
+                🏦 Log Transfer & Repayment
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', background: 'var(--card-bg)', padding: '16px 24px', borderRadius: '8px', border: '1px solid var(--border)' }}>

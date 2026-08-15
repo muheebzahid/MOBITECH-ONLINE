@@ -21,6 +21,8 @@ function fmtS(n: number) {
 import { useQuery } from '@tanstack/react-query'
 import { getClients } from '@/lib/clients/actions'
 
+import { exportToExcel } from '@/lib/utils/exportExcel'
+
 export default function ClientsClient({ clients }: { clients: any[] }) {
   const { data: currentClients = clients } = useQuery({
     queryKey: ['clients'],
@@ -50,6 +52,28 @@ export default function ClientsClient({ clients }: { clients: any[] }) {
         <div>
           <h1 className="page-title">Client Accounts</h1>
           <p className="page-subtitle">Manage wholesale customer accounts and track outstanding balances</p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Client Name', 'Company Name', 'Email', 'Phone', 'Total Invoiced ($)', 'Total Paid ($)', 'Balance Due ($)', 'Status']
+              const rows = filteredClients.map((c: any) => [
+                c.name,
+                c.company_name || '',
+                c.email || '',
+                c.phone || '',
+                c.total_billed || 0,
+                c.total_paid || 0,
+                c.total_outstanding || 0,
+                c.status || 'ACTIVE'
+              ])
+              exportToExcel('mobitech_clients_export', headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
         </div>
       </div>
 

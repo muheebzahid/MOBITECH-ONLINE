@@ -214,39 +214,42 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   }
 
   const handleExportExcel = () => {
-    const itemsToExport = filtered.filter(i => selectedItems.has(i.id))
-    if (itemsToExport.length === 0) return
+    const itemsToExport = selectedItems.size > 0 
+      ? currentInventory.filter(i => selectedItems.has(i.id))
+      : currentInventory
+
+    if (itemsToExport.length === 0) return alert('No inventory items to export.')
 
     const data = itemsToExport.map(i => ({
       ID: i.id,
       'Deal Number': i.deals?.deal_number || '',
       Model: i.model,
-      Specs: `${i.storage} / ${i.color} / Grade ${i.grade}`,
+      Specs: `${i.storage || ''} / ${i.color || ''} / Grade ${i.grade || ''}`,
       IMEI: i.imei || '',
       'Serial Number': i.serial_number || '',
       'Repair Cost': i.repair_cost || 0,
-      Status: i.status
+      Stage: i.refurb_stage || '',
+      Status: i.status || ''
     }))
 
     const worksheet = XLSX.utils.json_to_sheet(data)
-    
-    // Auto-size columns
     worksheet['!cols'] = [
-      { wch: 36 }, // ID
-      { wch: 18 }, // Deal
-      { wch: 20 }, // Model
-      { wch: 25 }, // Specs
-      { wch: 20 }, // IMEI
-      { wch: 20 }, // Serial
-      { wch: 15 }, // Repair Cost
-      { wch: 15 }, // Status
+      { wch: 36 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 25 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 15 },
     ]
 
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
     
     const timestamp = new Date().toISOString().split('T')[0]
-    XLSX.writeFile(workbook, `inventory_update_${timestamp}.xlsx`)
+    XLSX.writeFile(workbook, `mobitech_inventory_export_${timestamp}.xlsx`)
   }
 
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -315,11 +318,16 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
           <h1 className="page-title">Refurbishment Pipeline</h1>
           <p className="page-subtitle">Track IMEI refurbishment, repair costs, and QC</p>
         </div>
-        {role !== 'VIEW_ONLY' && (
-          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-            + Add Inventory
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button className="btn-ghost" onClick={handleExportExcel} style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}>
+            📊 Export to Excel
           </button>
-        )}
+          {role !== 'VIEW_ONLY' && (
+            <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+              + Add Inventory
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>

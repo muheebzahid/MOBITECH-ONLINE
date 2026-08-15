@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { SHIPMENT_STATUSES, SHIPMENT_STATUS_ORDER, CARRIERS, type ShipmentStatus } from '@/lib/logistics/constants'
 import { createShipment, updateShipmentHandler } from '@/lib/logistics/actions'
 import { useRole } from '@/components/RoleProvider'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 function fmtS(n: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0) }
 function fmtD(d: string | null | undefined) { if (!d) return '-'; return new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' }) }
@@ -80,11 +81,38 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
           <h1 className="page-title">Logistics</h1>
           <p className="page-subtitle">Track every shipment from Miami to Mobitech warehouse</p>
         </div>
-        {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
-          <button className="btn-primary" onClick={() => setShowCreate(true)} id="new-shipment-btn">
-            + New Shipment
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Shipment Number', 'Status', 'Carrier', 'AWB / Waybill', 'SB Invoice Number', 'Shipped USA Date', 'Arrived Dubai Date', 'Delivered Date', 'SB Fee ($)', 'USA-to-USA Cost ($)', 'USA-to-DXB Cost ($)', 'Total Logistics Cost ($)', 'Notes']
+              const rows = currentShipments.map(s => [
+                s.shipment_number,
+                s.status || '',
+                s.carrier || '',
+                s.awb_number || '',
+                s.sb_invoice_number || '',
+                s.shipped_usa_date || '',
+                s.arrived_dubai_date || '',
+                s.delivered_mobitech_date || '',
+                s.sb_fee || 0,
+                s.usa_to_usa_cost || 0,
+                s.usa_to_dxb_cost || 0,
+                s.total_logistics_cost || 0,
+                s.notes || ''
+              ])
+              exportToExcel('mobitech_logistics_export', headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
           </button>
-        )}
+          {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
+            <button className="btn-primary" onClick={() => setShowCreate(true)} id="new-shipment-btn">
+              + New Shipment
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}

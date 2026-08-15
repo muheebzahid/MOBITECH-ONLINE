@@ -11,6 +11,7 @@ import EditDealModal from './EditDealModal'
 import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
+import { exportToExcel } from '@/lib/utils/exportExcel'
 
 interface Props { 
   deals: Deal[]
@@ -525,26 +526,49 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
           <h1 className="page-title">Deals</h1>
           <p className="page-sub">Track every auction purchase from win to settlement</p>
         </div>
-        {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <input 
-              type="file" 
-              accept=".csv" 
-              style={{ display: 'none' }} 
-              ref={fileInputRef} 
-              onChange={handleFileUpload} 
-            />
-            <button className="btn-ghost" onClick={handleDownloadTemplate} style={{ border: '1px solid var(--border)' }}>
-              Download Template
-            </button>
-            <button className="btn-ghost" onClick={() => fileInputRef.current?.click()} style={{ border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)' }} disabled={isUploading || isPending}>
-              {isUploading || isPending ? 'Uploading...' : 'Upload Bulk Deals'}
-            </button>
-            <button id="new-deal-modal-btn" className="btn-primary" onClick={() => setShowModal(true)}>
-              + New Deal
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <input 
+            type="file" 
+            accept=".csv" 
+            style={{ display: 'none' }} 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+          />
+          <button 
+            className="btn-ghost" 
+            onClick={() => {
+              const headers = ['Deal Number', 'Supplier', 'Auction Platform', 'Quantity', 'Total Commitment ($)', 'Status', 'Funding Source', 'AMEX Statement Date', 'Created Date']
+              const rows = filtered.map(d => [
+                d.deal_number,
+                d.supplier || '',
+                d.auction_platform || '',
+                d.quantity || 0,
+                d.total_commitment || 0,
+                (DEAL_STATUSES as any)[d.status]?.label || d.status,
+                d.funding_source || '',
+                d.amex_statement_date || '',
+                new Date(d.created_at).toLocaleDateString()
+              ])
+              exportToExcel('mobitech_deals_export', headers, rows)
+            }} 
+            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+          >
+            📊 Export to Excel
+          </button>
+          <button className="btn-ghost" onClick={handleDownloadTemplate} style={{ border: '1px solid var(--border)' }}>
+            Download Template
+          </button>
+          {role !== 'FINANCE' && role !== 'VIEW_ONLY' && (
+            <>
+              <button className="btn-ghost" onClick={() => fileInputRef.current?.click()} style={{ border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)' }} disabled={isUploading || isPending}>
+                {isUploading || isPending ? 'Uploading...' : 'Upload Bulk Deals'}
+              </button>
+              <button id="new-deal-modal-btn" className="btn-primary" onClick={() => setShowModal(true)}>
+                + New Deal
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Row 1: Deal Counts ── */}
