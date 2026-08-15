@@ -410,26 +410,47 @@ export async function deleteShipment(shipmentId: string) {
 }
 
 export async function updateShipmentHandler(shipmentId: string, handledBy: string | null) {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Not authenticated' }
 
-  const { data: existing } = await supabase.from('shipments').select('handled_by').eq('id', shipmentId).single()
+    const { getUserRole } = await import('@/lib/admin/actions')
+    const role = await getUserRole()
+    if (role === 'VIEW_ONLY' || role === 'DENIED') {
+      return { error: 'Unauthorized: View-only users cannot modify shipment handler.' }
+    }
 
-  const { error } = await supabase
-    .from('shipments')
-    .update({ handled_by: handledBy })
-    .eq('id', shipmentId)
-    
-  if (error) return { error: error.message }
+    const { createClient: createSupabaseAdmin } = await import('@supabase/supabase-js')
+    const supabaseAdmin = createSupabaseAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
 
-  await logAudit({
-    tableName: 'shipments',
-    recordId: shipmentId,
-    action: 'UPDATE',
-    oldData: { handled_by: existing?.handled_by || null },
-    newData: { handled_by: handledBy }
-  })
+    const { data: existing } = await supabaseAdmin.from('shipments').select('handled_by').eq('id', shipmentId).maybeSingle()
 
-  revalidatePath('/dashboard/logistics')
-  revalidatePath(`/dashboard/logistics/${shipmentId}`)
-  return { success: true }
+    const { error } = await supabaseAdmin
+      .from('shipments')
+      .update({ handled_by: handledBy })
+      .eq('id', shipmentId)
+      
+    if (error) return { error: error.message }
+
+    await logAudit({
+      tableName: 'shipments',
+      recordId: shipmentId,
+      action: 'UPDATE',
+      oldData: { handled_by: existing?.handled_by || null },
+      newData: { handled_by: handledBy },
+      customEmail: user.email,
+      customRole: role || undefined
+    })
+
+    revalidatePath('/dashboard/logistics')
+    revalidatePath(`/dashboard/logistics/${shipmentId}`)
+    return { success: true }
+  } catch (err: any) {
+    console.error('Error updating shipment handler:', err)
+    return { error: err?.message || 'Failed to update handler' }
+  }
 }
