@@ -85,22 +85,36 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
           <button 
             className="btn-ghost" 
             onClick={() => {
-              const headers = ['Shipment Number', 'Status', 'Carrier', 'AWB / Waybill', 'SB Invoice Number', 'Shipped USA Date', 'Arrived Dubai Date', 'Delivered Date', 'SB Fee ($)', 'USA-to-USA Cost ($)', 'USA-to-DXB Cost ($)', 'Total Logistics Cost ($)', 'Notes']
-              const rows = currentShipments.map(s => [
-                s.shipment_number,
-                s.status || '',
-                s.carrier || '',
-                s.awb_number || '',
-                s.sb_invoice_number || '',
-                s.shipped_usa_date || '',
-                s.arrived_dubai_date || '',
-                s.delivered_mobitech_date || '',
-                s.sb_fee || 0,
-                s.usa_to_usa_cost || 0,
-                s.usa_to_dxb_cost || 0,
-                s.total_logistics_cost || 0,
-                s.notes || ''
-              ])
+              const headers = [
+                'Shipment Number', 'Status', 'Carrier', 'AWB / Waybill', 
+                'Deals Count', 'Deal Numbers', 'Total Units in Shipment',
+                'SB Invoice Number', 'Shipped USA Date', 'Arrived Dubai Date', 'Delivered Date', 
+                'SB Fee ($)', 'USA-to-USA Cost ($)', 'USA-to-DXB Cost ($)', 'Total Logistics Cost ($)', 'Notes'
+              ]
+              const rows = currentShipments.map(s => {
+                const dealsList = (s.shipment_deals || []).map((sd: any) => sd.deals?.deal_number).filter(Boolean).join('; ')
+                const totalUnits = (s.shipment_deals || []).reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0)
+                const dealsCount = (s.shipment_deals || []).length
+
+                return [
+                  s.shipment_number,
+                  s.status || '',
+                  s.carrier || '',
+                  s.awb_number || '',
+                  dealsCount,
+                  dealsList || 'None',
+                  totalUnits,
+                  s.sb_invoice_number || '',
+                  s.shipped_usa_date || '',
+                  s.arrived_dubai_date || '',
+                  s.delivered_mobitech_date || '',
+                  s.sb_fee || 0,
+                  s.usa_to_usa_cost || 0,
+                  s.usa_to_dxb_cost || 0,
+                  s.total_logistics_cost || 0,
+                  s.notes || ''
+                ]
+              })
               exportToExcel('mobitech_logistics_export', headers, rows)
             }} 
             style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
