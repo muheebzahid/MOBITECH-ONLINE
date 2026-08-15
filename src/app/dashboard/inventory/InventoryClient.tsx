@@ -5,6 +5,8 @@ import PaginationBar from '@/components/PaginationBar'
 import * as XLSX from 'xlsx'
 import { updateInventoryLocation, updateRefurbStage, deleteInventoryItem, updateInventoryItemImei, bulkUpdateInventoryItems, bulkDeleteInventoryItems } from '@/lib/inventory/actions'
 import { useRole } from '@/components/RoleProvider'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 const STAGES = [
   { id: 'SEPARATED', label: 'Separated' },
@@ -45,6 +47,15 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
+
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('inventory_items')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -319,6 +330,13 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
           <p className="page-subtitle">Track IMEI refurbishment, repair costs, and QC</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button className="btn-ghost" onClick={handleExportExcel} style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}>
             📊 Export to Excel
           </button>
@@ -755,6 +773,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
           </div>
         </div>
       )}
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Inventory Refurbish Edit History" />
       <PaginationBar page={inventoryPage} pageSize={25} total={inventoryTotal} baseUrl="/dashboard/inventory" />
     </div>
   )

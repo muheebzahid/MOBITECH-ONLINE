@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { getDealById } from '@/lib/deals/actions'
+import { logAudit } from '@/lib/audit/actions'
 
 const INVENTORY_PAGE_SIZE = 25
 
@@ -136,6 +137,8 @@ export async function updateInventoryLocation(itemId: string, newLocation: strin
 export async function updateRefurbStage(itemId: string, newStage: string, updates: { repair_cost?: number, qc_document_url?: string } = {}) {
   const supabase = await createClient()
   
+  const { data: item } = await supabase.from('inventory_items').select('*').eq('id', itemId).single()
+
   const payload: any = { refurb_stage: newStage }
   if (updates.repair_cost !== undefined) payload.repair_cost = updates.repair_cost
   if (updates.qc_document_url !== undefined) payload.qc_document_url = updates.qc_document_url
@@ -146,6 +149,14 @@ export async function updateRefurbStage(itemId: string, newStage: string, update
     .eq('id', itemId)
 
   if (error) return { error: error.message }
+
+  await logAudit({
+    tableName: 'inventory_items',
+    recordId: itemId,
+    action: 'STATUS_CHANGE',
+    oldData: item ? { refurb_stage: item.refurb_stage, repair_cost: item.repair_cost } : null,
+    newData: payload
+  })
 
   revalidatePath('/dashboard/inventory')
   return { success: true }

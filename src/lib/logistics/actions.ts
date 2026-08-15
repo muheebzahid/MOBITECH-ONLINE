@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ShipmentStatus } from './constants'
+import { logAudit } from '@/lib/audit/actions'
 
 const SHIPMENTS_PAGE_SIZE = 25
 
@@ -131,6 +132,13 @@ export async function createShipment(formData: FormData) {
     await supabase.from('shipment_deals').insert(links)
   }
 
+  await logAudit({
+    tableName: 'shipments',
+    recordId: shipment.id,
+    action: 'CREATE',
+    newData: shipment
+  })
+
   revalidatePath('/dashboard/logistics')
   return { success: true, shipment }
 }
@@ -170,6 +178,13 @@ export async function updateShipmentStatus(
     .eq('id', shipmentId)
 
   if (error) return { error: error.message }
+
+  await logAudit({
+    tableName: 'shipments',
+    recordId: shipmentId,
+    action: 'STATUS_CHANGE',
+    newData: updatePayload
+  })
 
   // If delivered, also update linked deals to RECEIVED_BY_MOBITECH
   if (newStatus === 'DELIVERED_TO_MOBITECH') {

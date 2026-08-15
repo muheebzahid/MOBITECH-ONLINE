@@ -12,6 +12,8 @@ import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 interface Props { 
   deals: Deal[]
@@ -96,6 +98,15 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
   const [showStatus, setShowStatus] = useState(true)
   const [sortColumn, setSortColumn] = useState('default')
   const [sortDirection, setSortDirection] = useState<'desc'|'asc'>('desc')
+
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async (dealId?: string) => {
+    const logs = await getAuditHistory('deals', dealId)
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
 
   const [isPending, startTransition] = useTransition()
   const [isUploading, setIsUploading] = useState(false)
@@ -534,6 +545,13 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
             ref={fileInputRef} 
             onChange={handleFileUpload} 
           />
+          <button 
+            className="btn-ghost" 
+            onClick={() => handleOpenAudit()} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -1219,6 +1237,7 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
 
       {showModal && <NewDealModal onClose={() => setShowModal(false)} />}
       {editDeal  && <EditDealModal deal={editDeal} onClose={() => setEditDeal(null)} />}
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Deals Module Edit History" />
       <PaginationBar page={page} pageSize={25} total={total} baseUrl="/dashboard/deals" />
     </div>
   )

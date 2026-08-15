@@ -20,8 +20,9 @@ function fmtS(n: number) {
 
 import { useQuery } from '@tanstack/react-query'
 import { getClients } from '@/lib/clients/actions'
-
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 export default function ClientsClient({ clients }: { clients: any[] }) {
   const { data: currentClients = clients } = useQuery({
@@ -32,6 +33,14 @@ export default function ClientsClient({ clients }: { clients: any[] }) {
   })
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('clients')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
 
   // Aggregate global metrics
   const activeClientsCount = currentClients.length
@@ -53,7 +62,14 @@ export default function ClientsClient({ clients }: { clients: any[] }) {
           <h1 className="page-title">Client Accounts</h1>
           <p className="page-subtitle">Manage wholesale customer accounts and track outstanding balances</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -170,6 +186,7 @@ export default function ClientsClient({ clients }: { clients: any[] }) {
           </table>
         </div>
       )}
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Client Accounts Edit History" />
     </div>
   )
 }

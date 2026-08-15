@@ -6,6 +6,8 @@ import { INVOICE_STATUSES, type InvoiceStatus } from '@/lib/sales/constants'
 import { createInvoice, updateInvoiceApproval } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 function fmtS(n: number) {
   const parts = Number(n || 0).toString().split('.')
@@ -43,6 +45,15 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('invoices')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
   
   const [form, setForm] = useState({
     customer_name: '', customer_email: '', customer_address: '', customer_phone: '',
@@ -137,6 +148,13 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           <p className="page-subtitle">Manage wholesale invoices and reconcile payments</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -515,7 +533,7 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           </div>
         </div>
       )}
-      
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Sales Invoices Edit History" />
     </div>
   )
 }

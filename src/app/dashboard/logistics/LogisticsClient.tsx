@@ -7,6 +7,8 @@ import { SHIPMENT_STATUSES, SHIPMENT_STATUS_ORDER, CARRIERS, type ShipmentStatus
 import { createShipment, updateShipmentHandler } from '@/lib/logistics/actions'
 import { useRole } from '@/components/RoleProvider'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 function fmtS(n: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0) }
 function fmtD(d: string | null | undefined) { if (!d) return '-'; return new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' }) }
@@ -39,6 +41,15 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
   const [form, setForm] = useState({ carrier: '', awb_number: '', sb_invoice_number: '', sb_fee: '', usa_to_usa_cost: '', usa_to_dxb_cost: '', pickup_ref: '', pickup_date: '', notes: '' })
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [error, setError] = useState('')
+
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('shipments')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
 
   // Summary counts
   const inTransit   = currentShipments.filter(s => ['SHIPPED_FROM_USA','IN_TRANSIT'].includes(s.status)).length
@@ -82,6 +93,13 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
           <p className="page-subtitle">Track every shipment from Miami to Mobitech warehouse</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -361,6 +379,7 @@ export default function LogisticsClient({ shipments, unshippedDeals, shipmentsTo
           </div>
         </div>
       )}
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Logistics Shipments Edit History" />
       <PaginationBar page={shipmentsPage} pageSize={25} total={shipmentsTotal} baseUrl="/dashboard/logistics" />
     </div>
   )

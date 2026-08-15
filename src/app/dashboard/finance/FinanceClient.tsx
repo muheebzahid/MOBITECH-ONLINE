@@ -3,6 +3,8 @@
 import { useState, useTransition } from 'react'
 import { updateTreasurySettings, logWireTransfer, logRepayment, updateWireTransfer, deleteWireTransfer, updateRepayment, deleteRepayment } from '@/lib/finance/actions'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 interface Props {
   settings: any
@@ -63,6 +65,15 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
   // Editing state
   const [editingWireId, setEditingWireId] = useState<string | null>(null)
   const [editingRepayId, setEditingRepayId] = useState<string | null>(null)
+
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('treasury')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
   
   // Form states
   const [amexLimit, setAmexLimit] = useState(formatInputNumber(settings.amex_limit.toString()))
@@ -290,6 +301,13 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
           <p className="page-sub">Manage global limits, wire transfers, capital repayments, and inter-pool transfers.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -856,6 +874,7 @@ export default function FinanceClient({ settings, wires, repayments, deals, invo
         </div>
       )}
 
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Treasury Control Edit History" />
     </div>
   )
 }

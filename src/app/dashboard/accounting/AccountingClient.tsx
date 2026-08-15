@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import TreasuryControlSection from '@/components/accounting/TreasuryControlSection'
 import { TreasuryTransaction } from '@/lib/accounting/treasuryActions'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 type FinancialSummary = {
   revenue: number
@@ -72,6 +74,16 @@ export default function AccountingClient({
 
   // Edit Expense State
   const [editingExpense, setEditingExpense] = useState<any>(null)
+
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const table = activeTab === 'expenses' ? 'operating_expenses' : activeTab === 'treasury' ? 'treasury' : 'deals'
+    const logs = await getAuditHistory(table)
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
 
   const data = summary[currency]
   const symbol = currency === 'usd' ? '$' : 'د.إ'
@@ -294,6 +306,13 @@ export default function AccountingClient({
               AED
             </button>
           </div>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -1018,6 +1037,7 @@ export default function AccountingClient({
           </div>
         </div>
       )}
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Accounting & Finance Edit History" />
     </div>
   )
 }

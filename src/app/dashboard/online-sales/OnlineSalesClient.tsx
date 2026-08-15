@@ -7,6 +7,8 @@ import * as XLSX from 'xlsx'
 import { createOnlineOrder, bulkCreateOnlineOrders, bulkFulfillAndShipOrders, assignImeiToOrderItem, deleteOnlineOrder } from '@/lib/online-sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 interface Props {
   platform: 'AMAZON' | 'REVIBE'
@@ -55,6 +57,15 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
   const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('online_orders')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
   
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [showFulfillModal, setShowFulfillModal] = useState(false)
@@ -342,6 +353,13 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
           <p className="page-subtitle">Track orders, manage SKU details, and scan outbound device IMEIs</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -736,6 +754,7 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
           </option>
         ))}
       </datalist>
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title={`${platform} Online Sales Edit History`} />
       <PaginationBar page={ordersPage} pageSize={25} total={ordersTotal} baseUrl={`/dashboard/online-sales/${platform.toLowerCase()}`} />
     </div>
   )

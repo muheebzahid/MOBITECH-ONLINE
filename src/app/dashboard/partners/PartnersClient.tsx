@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { requestWithdrawal, approveTransaction, rejectTransaction, distributeProfit, injectCapital } from '@/lib/partners/actions'
 import { exportToExcel } from '@/lib/utils/exportExcel'
+import { getAuditHistory } from '@/lib/audit/actions'
+import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 interface Props {
   netProfit: number
@@ -46,6 +48,15 @@ export default function PartnersClient({ netProfit, partners, pendingWithdrawals
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
 
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const handleOpenAudit = async () => {
+    const logs = await getAuditHistory('partners')
+    setAuditLogs(logs)
+    setShowAuditModal(true)
+  }
+
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault()
     startTransition(async () => {
@@ -86,6 +97,13 @@ export default function PartnersClient({ netProfit, partners, pendingWithdrawals
           <p className="page-sub">Manage capital accounts, equity shares, and profit distributions.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-ghost" 
+            onClick={handleOpenAudit} 
+            style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+          >
+            📜 History
+          </button>
           <button 
             className="btn-ghost" 
             onClick={() => {
@@ -294,6 +312,7 @@ export default function PartnersClient({ netProfit, partners, pendingWithdrawals
           </div>
         </div>
       )}
+      <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Partner Accounting Edit History" />
     </div>
   )
 }

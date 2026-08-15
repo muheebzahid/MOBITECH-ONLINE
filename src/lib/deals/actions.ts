@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { logAudit } from '@/lib/audit/actions'
 
 function enrichDealFinancials(deal: any) {
   if (!deal) return deal
@@ -312,6 +313,14 @@ export async function updateDealStatus(dealId: string, newStatus: string, notes?
     notes: notes || null,
     changed_by: user.id,
     changed_at: dateOverride ? new Date(dateOverride).toISOString() : new Date().toISOString()
+  })
+
+  await logAudit({
+    tableName: 'deals',
+    recordId: dealId,
+    action: 'STATUS_CHANGE',
+    oldData: { status: deal.status },
+    newData: { status: newStatus, notes: notes || null }
   })
 
   revalidatePath('/dashboard/deals')
