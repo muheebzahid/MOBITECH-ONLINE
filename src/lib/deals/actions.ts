@@ -1056,9 +1056,9 @@ export async function uploadDealDocument(dealId: string, formData: FormData) {
     deal_id: dealId,
     file_name: fileName,
     file_url: url,
-    file_type: file.type || 'application/octet-stream',
-    file_size: file.size,
-    created_by: user.id
+    document_type: 'OTHER',
+    notes: `Type: ${file.type || 'unknown'}, Size: ${(file.size / 1024).toFixed(1)} KB`,
+    uploaded_by: user.id
   })
   
   if (dbError) return { error: dbError.message }
