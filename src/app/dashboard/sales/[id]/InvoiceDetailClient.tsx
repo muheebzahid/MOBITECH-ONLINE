@@ -213,16 +213,12 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
     setIsDragging(false)
     const file = e.dataTransfer.files?.[0]
     if (!file) return
-    if (file.type !== 'application/pdf') {
-      alert('Please drop a valid PDF document.')
-      return
-    }
     await uploadFile(file)
   }
 
   const handleRemovePdf = async () => {
     if (!invoice.pdf_url) return
-    if (!window.confirm('Remove attached PDF?')) return
+    if (!window.confirm('Remove attached document?')) return
     startTransition(async () => {
       const res = await removeInvoiceDocument(invoice.id, invoice.pdf_url)
       if (res.error) alert(res.error)
@@ -663,14 +659,14 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
             <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>Attachment</h3>
             {invoice.pdf_url ? (
                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                 <a href={invoice.pdf_url} target="_blank" rel="noreferrer" className="btn-primary" style={{ padding: '8px 16px', fontSize: '12px' }}>View PDF</a>
+                 <a href={invoice.pdf_url} target="_blank" rel="noreferrer" className="btn-primary" style={{ padding: '8px 16px', fontSize: '12px' }}>View Attachment</a>
                  {role === 'SUPER_ADMIN' && (
                    <button className="btn-ghost" style={{ color: 'var(--accent-red)', padding: '8px 16px', fontSize: '12px' }} onClick={handleRemovePdf}>Remove</button>
                  )}
                </div>
             ) : role === 'VIEW_ONLY' ? (
               <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                No PDF document attached.
+                No document attached.
               </div>
             ) : (
                <div
@@ -687,14 +683,14 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                    cursor: 'pointer'
                  }}
                >
-                 <input type="file" accept="application/pdf" id="pdf-upload" style={{ display: 'none' }} onChange={handleUploadPdf} />
+                 <input type="file" id="pdf-upload" style={{ display: 'none' }} onChange={handleUploadPdf} />
                  <label htmlFor="pdf-upload" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                    <span style={{ fontSize: '24px' }}>{isUploadingPdf ? '⏳' : '📥'}</span>
                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                     {isUploadingPdf ? 'Uploading...' : 'Drag & drop PDF here, or click to browse'}
+                     {isUploadingPdf ? 'Uploading...' : 'Drag & drop file here, or click to browse'}
                    </span>
                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                     Supports PDF format only
+                     Supports any file format
                    </span>
                  </label>
                </div>
