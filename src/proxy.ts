@@ -47,6 +47,12 @@ export async function proxy(request: NextRequest) {
   // 2. Redirect unauthenticated users to login for protected routes
   // Assuming all routes except /login and /auth are protected
   if (!user && !isAuthRoute) {
+    if (request.nextUrl.pathname.startsWith('/api')) {
+      return new NextResponse(JSON.stringify({ success: false, error: 'Session expired. Please log in again.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
