@@ -44,26 +44,31 @@ export async function executeSyncJob(input: { dealIds: string[]; userRole?: stri
             const originalName = client.name;
             
             // 1. Rename old client to free up the unique name constraint
-            await localSupabase.from('clients').update({ name: `${originalName}_TEMP_SYNC_SWAP_${oldId}` }).eq('id', oldId);
+            const { error: err1 } = await localSupabase.from('clients').update({ name: `${originalName}_TEMP_SYNC_SWAP_${oldId}` }).eq('id', oldId);
+            if (err1) throw new Error(`Conflict Resolution: Failed to rename local client: ${err1.message}`);
             
             // 2. Insert new client with onlineId
-            await localSupabase.from('clients').insert({ ...client, id: onlineId, name: originalName });
+            const { error: err2 } = await localSupabase.from('clients').insert({ ...client, id: onlineId, name: originalName });
+            if (err2) throw new Error(`Conflict Resolution: Failed to insert online client locally: ${err2.message}`);
             
             // 3. Update invoices
-            await localSupabase.from('invoices').update({ client_id: onlineId }).eq('client_id', oldId);
+            const { error: err3 } = await localSupabase.from('invoices').update({ client_id: onlineId }).eq('client_id', oldId);
+            if (err3) throw new Error(`Conflict Resolution: Failed to update local invoices: ${err3.message}`);
             
             // 4. Delete old client
-            await localSupabase.from('clients').delete().eq('id', oldId);
+            const { error: err4 } = await localSupabase.from('clients').delete().eq('id', oldId);
+            if (err4) throw new Error(`Conflict Resolution: Failed to delete local temp client: ${err4.message}`);
             
             // 5. Force sync state
             const onlineChecksum = calculateRecordChecksum('clients', onlineClient);
-            await localSupabase.from('record_sync_state').upsert({
+            const { error: err5 } = await localSupabase.from('record_sync_state').upsert({
               source_table: 'clients',
               source_record_id: onlineId,
               last_synced_local_checksum: onlineChecksum,
               last_synced_online_checksum: onlineChecksum,
               destination_project_id: 'aivcmkwclfipntadipec'
             }, { onConflict: 'source_table, source_record_id, destination_project_id' });
+            if (err5) throw new Error(`Conflict Resolution: Failed to upsert client sync state: ${err5.message}`);
             
             needsRediscovery = true;
           }

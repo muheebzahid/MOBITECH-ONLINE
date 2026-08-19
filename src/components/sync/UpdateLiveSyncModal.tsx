@@ -71,8 +71,9 @@ export default function UpdateLiveSyncModal({ dealIds: initialDealIds, isOpen, o
           body: JSON.stringify({ dealIds: ids })
         })
         const pfData = await pfRes.json()
-        if (pfData.success) {
-          setPreflight(pfData)
+        setPreflight(pfData)
+        if (!pfData.success) {
+          setError(pfData.error || 'Preflight verification failed')
         }
       } else {
         setPreflight(null)

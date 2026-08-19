@@ -153,6 +153,7 @@ export function validateDealPackage(pkg: DealDiscoveryPackage): ValidationResult
     if (pay.amount < 0) {
       issues.push({
         severity: 'ERROR',
+        blocking: true,
         type: 'VALIDATION',
         module: 'Finance', sourceTable: 'payments', recordId: pay.id, field: 'amount',
         currentValue: pay.amount, expectedValue: '>= 0',

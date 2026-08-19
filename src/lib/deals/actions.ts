@@ -953,7 +953,13 @@ export async function moveSkuToOnlineInventory(
   if (!clientId) {
     const { data: newClient, error: ncError } = await supabase
       .from('clients')
-      .insert({ name: 'Internal - Online Inventory' })
+      .insert({ 
+        id: '4b6cd459-dd29-4be7-a28e-58cbbed31285',
+        name: 'Internal - Online Inventory',
+        email: 'internal-online@mobitech.com',
+        phone: '+971500000000',
+        address: 'Internal Dubai Warehouse'
+      })
       .select()
       .single()
     if (ncError) return { error: ncError.message }
