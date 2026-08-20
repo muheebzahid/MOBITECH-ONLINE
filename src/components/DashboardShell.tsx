@@ -77,8 +77,8 @@ export default function DashboardShell({ user, children }: Props) {
               <path d="M8 22L16 10L24 22H8Z" fill="white" opacity="0.9" />
               <defs>
                 <linearGradient id="sgrad" x1="0" y1="0" x2="32" y2="32">
-                  <stop offset="0%" stopColor="#6366f1" />
-                  <stop offset="100%" stopColor="#8b5cf6" />
+                  <stop offset="0%" stopColor="#a855f7" />
+                  <stop offset="100%" stopColor="#22d3ee" />
                 </linearGradient>
               </defs>
             </svg>
