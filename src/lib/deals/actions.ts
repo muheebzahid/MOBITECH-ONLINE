@@ -416,7 +416,7 @@ export async function deleteDeal(dealId: string) {
   return { success: true }
 }
 
-const DEALS_PAGE_SIZE = 25
+const DEALS_PAGE_SIZE = 10000
 
 export async function getDeals(page: number = 0) {
   const supabase = await createClient()

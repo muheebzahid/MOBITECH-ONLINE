@@ -1,5 +1,4 @@
 'use client'
-import PaginationBar from '@/components/PaginationBar'
 
 import { useState, useEffect, Suspense, useTransition, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -1238,7 +1237,6 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
       {showModal && <NewDealModal onClose={() => setShowModal(false)} />}
       {editDeal  && <EditDealModal deal={editDeal} onClose={() => setEditDeal(null)} />}
       <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Deals Module Edit History" />
-      <PaginationBar page={page} pageSize={25} total={total} baseUrl="/dashboard/deals" />
     </div>
   )
 }
