@@ -29,10 +29,11 @@ function fmtS(n: number) {
 
 import { moveSkuToOnlineInventory } from '@/lib/deals/actions'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAllInventory } from '@/lib/inventory/actions'
 
 export default function InventoryClient({ inventory, activeDeals = [], inventoryTotal = 0, inventoryPage = 0 }: { inventory: any[], activeDeals?: any[], inventoryTotal?: number, inventoryPage?: number }) {
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -168,6 +169,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   const handleMoveStage = (itemId: string, newStage: string) => {
     startTransition(async () => {
       await updateRefurbStage(itemId, newStage)
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] })
     })
   }
 
@@ -175,6 +177,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
     startTransition(async () => {
       await updateRefurbStage(itemId, 'HANDED_TO_REFURBISH', { repair_cost: repairCost })
       setEditingRepair(null)
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] })
     })
   }
 
@@ -182,6 +185,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
     startTransition(async () => {
       await updateRefurbStage(itemId, 'QC_DONE', { qc_document_url: qcDoc, notes: qcNotes })
       setEditingQc(null)
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] })
     })
   }
 
@@ -220,6 +224,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
       setSelectedItemId('')
       setMoveQty(1)
       setMoving(false)
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] })
     }
   }
 
@@ -228,11 +233,14 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
       startTransition(async () => {
         const res = await deleteInventoryItem(id)
         if (res.error) alert(res.error)
-        else setSelectedItems(prev => {
-          const next = new Set(prev)
-          next.delete(id)
-          return next
-        })
+        else {
+          setSelectedItems(prev => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+          await queryClient.invalidateQueries({ queryKey: ['inventory'] })
+        }
       })
     }
   }
@@ -298,6 +306,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
         
         if (updates.length > 0) {
           await bulkUpdateInventoryItems(updates)
+          await queryClient.invalidateQueries({ queryKey: ['inventory'] })
         }
         
         if (fileInputRef.current) fileInputRef.current.value = ''
@@ -311,6 +320,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
     startTransition(async () => {
       await Promise.all(Array.from(selectedItems).map(id => updateRefurbStage(id, newStage)))
       setSelectedItems(new Set())
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] })
     })
   }
 
@@ -322,6 +332,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
         const errors = results.filter(r => r.error).map(r => r.error)
         if (errors.length > 0) alert(`Some deletions failed: ${errors.join(', ')}`)
         setSelectedItems(new Set())
+        await queryClient.invalidateQueries({ queryKey: ['inventory'] })
       })
     }
   }
@@ -473,6 +484,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
                             startTransition(async () => {
                               await updateInventoryItemImei(item.id, editImeiValue)
                               setEditingImeiId(null)
+                              await queryClient.invalidateQueries({ queryKey: ['inventory'] })
                             })
                           }}>Save</button>
                           <button className="btn-ghost" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => setEditingImeiId(null)}>Cancel</button>
