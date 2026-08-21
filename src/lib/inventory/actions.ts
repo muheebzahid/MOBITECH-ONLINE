@@ -7,8 +7,28 @@ import { logAudit } from '@/lib/audit/actions'
 
 const INVENTORY_PAGE_SIZE = 25
 
-export async function getAllInventory(page: number = 0) {
+export async function getAllInventory(page: number = 0, search?: string) {
   const supabase = await createClient()
+
+  if (search && search.trim() !== '') {
+    const s = search.trim()
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select(`
+        *,
+        deals(deal_number, supplier, model),
+        invoices(invoice_number),
+        online_orders(order_number, platform)
+      `)
+      .or(`imei.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%`)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('getAllInventory search error:', error)
+      return { data: [], total: 0 }
+    }
+    return { data: data || [], total: data?.length || 0 }
+  }
 
   const from = page * INVENTORY_PAGE_SIZE
   const to = from + INVENTORY_PAGE_SIZE - 1

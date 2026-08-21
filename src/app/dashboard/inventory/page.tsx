@@ -6,10 +6,11 @@ import InventoryClient from './InventoryClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function InventoryPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function InventoryPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const role = await getUserRole()
   if (role === 'LOGISTICS') redirect('/dashboard')
-  const page = Math.max(0, parseInt((searchParams as any)?.page || '0') || 0)
+  const resolvedParams = await searchParams
+  const page = Math.max(0, parseInt(resolvedParams?.page || '0') || 0)
 
   const [inventoryRes, dealsRes] = await Promise.all([
     getAllInventory(page),

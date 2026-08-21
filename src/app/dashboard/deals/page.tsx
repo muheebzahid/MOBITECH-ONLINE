@@ -6,10 +6,11 @@ import DealsClient from './DealsClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DealsPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function DealsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const role = await getUserRole()
   if (role === 'SALES' || role === 'LOGISTICS') redirect('/dashboard')
-  const page = Math.max(0, parseInt((searchParams as any)?.page || '0') || 0)
+  const resolvedParams = await searchParams
+  const page = Math.max(0, parseInt(resolvedParams?.page || '0') || 0)
 
   const [dealsRes, settings] = await Promise.all([
     getDeals(page),

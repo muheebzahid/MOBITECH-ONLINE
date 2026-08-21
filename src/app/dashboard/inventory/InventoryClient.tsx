@@ -33,10 +33,20 @@ import { useQuery } from '@tanstack/react-query'
 import { getAllInventory } from '@/lib/inventory/actions'
 
 export default function InventoryClient({ inventory, activeDeals = [], inventoryTotal = 0, inventoryPage = 0 }: { inventory: any[], activeDeals?: any[], inventoryTotal?: number, inventoryPage?: number }) {
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
   const { data: inventoryResult } = useQuery({
-    queryKey: ['inventory', inventoryPage],
-    queryFn: () => getAllInventory(inventoryPage),
-    initialData: { data: inventory, total: inventoryTotal },
+    queryKey: ['inventory', inventoryPage, debouncedSearch],
+    queryFn: () => getAllInventory(inventoryPage, debouncedSearch),
+    initialData: debouncedSearch ? undefined : { data: inventory, total: inventoryTotal },
     staleTime: 15 * 1000,
   })
 
@@ -44,7 +54,6 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   const role = useRole()
   const [isPending, startTransition] = useTransition()
   const [activeStage, setActiveStage] = useState('SEPARATED')
-  const [searchTerm, setSearchTerm] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
 
@@ -176,11 +185,14 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
     })
   }
 
-  const filtered = inventory.filter(item => {
-    if (item.refurb_stage !== activeStage) return false
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      if (!item.imei?.toLowerCase().includes(term) && !item.model?.toLowerCase().includes(term)) {
+  const filtered = currentInventory.filter(item => {
+    if (!debouncedSearch && item.refurb_stage !== activeStage) return false
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase()
+      if (!item.imei?.toLowerCase().includes(term) && 
+          !item.serial_number?.toLowerCase().includes(term) && 
+          !item.model?.toLowerCase().includes(term) && 
+          !item.deals?.deal_number?.toLowerCase().includes(term)) {
         return false
       }
     }
@@ -786,7 +798,9 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
         </div>
       )}
       <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Inventory Refurbish Edit History" />
-      <PaginationBar page={inventoryPage} pageSize={25} total={inventoryTotal} baseUrl="/dashboard/inventory" />
+      {!debouncedSearch && (
+        <PaginationBar page={inventoryPage} pageSize={25} total={inventoryTotal} baseUrl="/dashboard/inventory" />
+      )}
     </div>
   )
 }

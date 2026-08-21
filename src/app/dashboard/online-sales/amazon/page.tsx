@@ -4,9 +4,10 @@ import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AmazonSalesPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function AmazonSalesPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const supabase = await createClient()
-  const page = Math.max(0, parseInt(searchParams?.page || '0') || 0)
+  const resolvedParams = await searchParams
+  const page = Math.max(0, parseInt(resolvedParams?.page || '0') || 0)
   const [
     { data: orders, total },
     { data: readyItems }
