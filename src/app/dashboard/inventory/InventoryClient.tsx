@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition, Fragment, useRef, useEffect } from 'react'
-import PaginationBar from '@/components/PaginationBar'
 import * as XLSX from 'xlsx'
 import { updateInventoryLocation, updateRefurbStage, deleteInventoryItem, updateInventoryItemImei, bulkUpdateInventoryItems, bulkDeleteInventoryItems } from '@/lib/inventory/actions'
 import { useRole } from '@/components/RoleProvider'
@@ -812,9 +811,6 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
         </div>
       )}
       <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title="Inventory Refurbish Edit History" />
-      {!debouncedSearch && (
-        <PaginationBar page={inventoryPage} pageSize={25} total={inventoryTotal} baseUrl="/dashboard/inventory" />
-      )}
     </div>
   )
 }

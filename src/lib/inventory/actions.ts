@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { getDealById } from '@/lib/deals/actions'
 import { logAudit } from '@/lib/audit/actions'
 
-const INVENTORY_PAGE_SIZE = 25
+const INVENTORY_PAGE_SIZE = 10000
 
 export async function getAllInventory(page: number = 0, search?: string) {
   const supabase = await createClient()
