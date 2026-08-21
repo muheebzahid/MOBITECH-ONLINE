@@ -549,6 +549,8 @@ export default function AccountingClient({
           liquidCash: data.treasury?.cashAvailable || 0,
           accountsReceivable: 0,
           inventoryAsset: data.inventoryAsset || 0,
+          inventoryAssetWholesale: (data as any).inventoryAssetWholesale || 0,
+          inventoryAssetOnline: (data as any).inventoryAssetOnline || 0,
           totalAssets: (data.treasury?.cashAvailable || 0) + (data.inventoryAsset || 0),
           accountsPayable: 0,
           amexLiability: data.treasury?.amexStuck || 0,
@@ -625,8 +627,13 @@ export default function AccountingClient({
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Inventory Asset Valuation</span>
-                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.inventoryAsset)}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>Unsold Inventory (Wholesale)</span>
+                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.inventoryAssetWholesale || 0)}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Unsold Inventory (Online)</span>
+                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.inventoryAssetOnline || 0)}</span>
                     </div>
                   </div>
                 </div>
@@ -796,13 +803,23 @@ export default function AccountingClient({
             }}
           >
             <h3 style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Current Assets</h3>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-              <span style={{ fontSize: '15px', fontWeight: 600 }}>Unsold Inventory ↗</span>
-              <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent-purple)' }}>{formatCurrency(data.inventoryAsset)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span style={{ fontSize: '13px' }}>Logistics charges for unsold inventory</span>
-              <span style={{ fontSize: '13px' }}>{formatCurrency(data.freight)}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Unsold Inventory (Wholesale)</span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{formatCurrency((data as any).inventoryAssetWholesale || 0)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Unsold Inventory (Online)</span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{formatCurrency((data as any).inventoryAssetOnline || 0)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '4px', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '14px', fontWeight: 700 }}>Total Unsold Inventory ↗</span>
+                <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent-purple)' }}>{formatCurrency(data.inventoryAsset)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginTop: '4px' }}>
+                <span style={{ fontSize: '12px' }}>Logistics charges for unsold inventory</span>
+                <span style={{ fontSize: '12px' }}>{formatCurrency(data.freight)}</span>
+              </div>
             </div>
           </div>
 

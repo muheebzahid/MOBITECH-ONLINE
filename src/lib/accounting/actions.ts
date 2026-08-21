@@ -48,8 +48,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   // 1. Prepare queries
   let invoicesQuery = supabase
     .from('invoices')
-    .select('id, total_amount, balance_due, amount_paid, status, issue_date')
+    .select('id, client_id, total_amount, balance_due, amount_paid, status, issue_date')
     .neq('status', 'CANCELLED')
+    .neq('client_id', '4b6cd459-dd29-4be7-a28e-58cbbed31285')
   if (fromDate) invoicesQuery = invoicesQuery.gte('issue_date', fromDate)
   if (toDate) invoicesQuery = invoicesQuery.lte('issue_date', toDate)
 
@@ -223,7 +224,20 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     totalSoldShippingCost += onlineCogsLogistics
   }
 
-  let inventoryValue = 0
+  let onlineUnsoldValue = 0
+  const { data: onlineUnsoldItems } = await supabase
+    .from('inventory_items')
+    .select('unit_cost, logistics_cost, repair_cost')
+    .neq('refurb_stage', 'SOLD')
+
+  if (onlineUnsoldItems) {
+    onlineUnsoldItems.forEach(item => {
+      const cost = Number(item.unit_cost || 0) + Number(item.logistics_cost || 0) + Number(item.repair_cost || 0)
+      onlineUnsoldValue += cost
+    })
+  }
+
+  let inventoryValue = 0 // Wholesale unsold inventory value
   if (deals) {
     deals.forEach((deal: any) => {
       const soldQty = dealSoldQuantities[deal.id] || 0
@@ -282,7 +296,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   const partnerCapital = (partners || []).reduce((sum: number, p: any) => sum + Number(p.current_balance || 0), 0)
   const retainedEarnings = netProfit
 
-  const totalAssets = liquidCash + accountsReceivable + inventoryValue
+  const totalAssets = liquidCash + accountsReceivable + inventoryValue + onlineUnsoldValue
   const totalLiabilities = accountsPayable + amexLiability
   const totalEquity = partnerCapital + retainedEarnings
 
@@ -344,7 +358,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       freight: freightExpense,
       opex: totalOpex,
       netProfit: netProfit,
-      inventoryAsset: inventoryValue,
+      inventoryAsset: inventoryValue + onlineUnsoldValue,
+      inventoryAssetWholesale: inventoryValue,
+      inventoryAssetOnline: onlineUnsoldValue,
       treasury: {
         amexLimit,
         amexStuck,
@@ -356,7 +372,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       balanceSheet: {
         liquidCash,
         accountsReceivable,
-        inventoryAsset: inventoryValue,
+        inventoryAsset: inventoryValue + onlineUnsoldValue,
+        inventoryAssetWholesale: inventoryValue,
+        inventoryAssetOnline: onlineUnsoldValue,
         totalAssets,
         accountsPayable,
         amexLiability,
@@ -378,7 +396,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       freight: freightExpense * USD_TO_AED,
       opex: totalOpex * USD_TO_AED,
       netProfit: netProfit * USD_TO_AED,
-      inventoryAsset: inventoryValue * USD_TO_AED,
+      inventoryAsset: (inventoryValue + onlineUnsoldValue) * USD_TO_AED,
+      inventoryAssetWholesale: inventoryValue * USD_TO_AED,
+      inventoryAssetOnline: onlineUnsoldValue * USD_TO_AED,
       treasury: {
         amexLimit: amexLimit * USD_TO_AED,
         amexStuck: amexStuck * USD_TO_AED,
@@ -390,7 +410,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       balanceSheet: {
         liquidCash: liquidCash * USD_TO_AED,
         accountsReceivable: accountsReceivable * USD_TO_AED,
-        inventoryAsset: inventoryValue * USD_TO_AED,
+        inventoryAsset: (inventoryValue + onlineUnsoldValue) * USD_TO_AED,
+        inventoryAssetWholesale: inventoryValue * USD_TO_AED,
+        inventoryAssetOnline: onlineUnsoldValue * USD_TO_AED,
         totalAssets: totalAssets * USD_TO_AED,
         accountsPayable: accountsPayable * USD_TO_AED,
         amexLiability: amexLiability * USD_TO_AED,
