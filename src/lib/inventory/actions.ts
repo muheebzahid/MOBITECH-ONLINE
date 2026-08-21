@@ -25,15 +25,32 @@ export async function getAllInventory(page: number = 0, search?: string) {
 
     if (error) {
       console.error('getAllInventory search error:', error)
-      return { data: [], total: 0 }
+      return { data: [], total: 0, stageCounts: {} }
     }
-    return { data: data || [], total: data?.length || 0 }
+
+    const stageCounts: Record<string, number> = {
+      SEPARATED: 0,
+      HANDED_TO_REFURBISH: 0,
+      QC_DONE: 0,
+      READY_TO_SELL: 0,
+      ASSIGNED: 0,
+      SOLD: 0
+    }
+    if (data) {
+      for (const item of data) {
+        if (item.refurb_stage) {
+          stageCounts[item.refurb_stage] = (stageCounts[item.refurb_stage] || 0) + 1
+        }
+      }
+    }
+
+    return { data: data || [], total: data?.length || 0, stageCounts }
   }
 
   const from = page * INVENTORY_PAGE_SIZE
   const to = from + INVENTORY_PAGE_SIZE - 1
 
-  const [{ count }, { data, error }] = await Promise.all([
+  const [{ count }, { data, error }, { data: stageData }] = await Promise.all([
     supabase.from('inventory_items').select('*', { count: 'exact', head: true }),
     supabase
       .from('inventory_items')
@@ -44,14 +61,32 @@ export async function getAllInventory(page: number = 0, search?: string) {
         online_orders(order_number, platform)
       `)
       .order('created_at', { ascending: false })
-      .range(from, to)
+      .range(from, to),
+    supabase.from('inventory_items').select('refurb_stage')
   ])
 
   if (error) {
     console.error('getAllInventory error:', error)
-    return { data: [], total: 0 }
+    return { data: [], total: 0, stageCounts: {} }
   }
-  return { data: data || [], total: count || 0 }
+
+  const stageCounts: Record<string, number> = {
+    SEPARATED: 0,
+    HANDED_TO_REFURBISH: 0,
+    QC_DONE: 0,
+    READY_TO_SELL: 0,
+    ASSIGNED: 0,
+    SOLD: 0
+  }
+  if (stageData) {
+    for (const item of stageData) {
+      if (item.refurb_stage) {
+        stageCounts[item.refurb_stage] = (stageCounts[item.refurb_stage] || 0) + 1
+      }
+    }
+  }
+
+  return { data: data || [], total: count || 0, stageCounts }
 }
 
 export async function getInventoryByDeal(dealId: string) {

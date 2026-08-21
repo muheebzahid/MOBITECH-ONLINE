@@ -374,7 +374,9 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
 
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>
         {STAGES.map(s => {
-          const count = currentInventory.filter(i => i.refurb_stage === s.id).length
+          const count = debouncedSearch
+            ? currentInventory.filter(i => i.refurb_stage === s.id).length
+            : (inventoryResult as any)?.stageCounts?.[s.id] ?? currentInventory.filter((i: any) => i.refurb_stage === s.id).length
           return (
             <button
               key={s.id}
