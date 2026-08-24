@@ -771,7 +771,6 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
         ))}
       </datalist>
       <AuditHistoryModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} title={`${platform} Online Sales Edit History`} />
-      <PaginationBar page={ordersPage} pageSize={25} total={ordersTotal} baseUrl={`/dashboard/online-sales/${platform.toLowerCase()}`} />
     </div>
   )
 }

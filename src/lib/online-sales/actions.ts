@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-const ORDERS_PAGE_SIZE = 25
+const ORDERS_PAGE_SIZE = 10000
 
 export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: number = 0) {
   const supabase = await createClient()
