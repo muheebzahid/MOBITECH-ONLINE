@@ -225,13 +225,14 @@ export default function DealDetailClient({ deal }: Props) {
       doc.setTextColor(55, 65, 81)
       doc.setFont('helvetica', 'bold')
       doc.text('Model', 17, y + 5)
-      doc.text('Storage', 45, y + 5)
-      doc.text('Grade', 65, y + 5)
-      doc.text('Stock+Fee Cost', 77, y + 5)
-      doc.text('Shipping/Unit', 107, y + 5)
-      doc.text('Total Cost/Unit', 132, y + 5)
-      doc.text('Total Cost', 157, y + 5)
-      doc.text('Qty', 182, y + 5)
+      doc.text('Storage', 43, y + 5)
+      doc.text('Grade', 61, y + 5)
+      doc.text('Stock+Fee', 73, y + 5)
+      doc.text('Ship/Unit', 96, y + 5)
+      doc.text('Repair/Unit', 119, y + 5)
+      doc.text('Total/Unit', 142, y + 5)
+      doc.text('Total Cost', 165, y + 5)
+      doc.text('Qty', 185, y + 5)
       y += 7
 
       doc.setFont('helvetica', 'normal')
@@ -262,7 +263,7 @@ export default function DealDetailClient({ deal }: Props) {
 
         const unitBidCost = Number(item.unit_cost || 0)
         const stockPlusFeeCost = unitBidCost + dealFeePerUnit
-        const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
+        const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
 
         const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
         const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -272,13 +273,14 @@ export default function DealDetailClient({ deal }: Props) {
         // Draw SKU Row
         const itemRemaining = Math.max(0, item.quantity - qtySold)
         doc.text(item.model.substring(0, 15), 17, y + 5)
-        doc.text(item.storage || '-', 45, y + 5)
-        doc.text(item.grade || '-', 65, y + 5)
-        doc.text(fmt(stockPlusFeeCost), 77, y + 5)
-        doc.text(fmt(shippingCostPerUnit), 107, y + 5)
-        doc.text(fmt(totalCostPerUnit), 132, y + 5)
-        doc.text(fmtS(item.quantity * totalCostPerUnit), 157, y + 5)
-        doc.text(String(itemRemaining), 182, y + 5)
+        doc.text(item.storage || '-', 43, y + 5)
+        doc.text(item.grade || '-', 61, y + 5)
+        doc.text(fmt(stockPlusFeeCost), 73, y + 5)
+        doc.text(fmt(shippingCostPerUnit), 96, y + 5)
+        doc.text(fmt(Number(item.repair_cost || 0)), 119, y + 5)
+        doc.text(fmt(totalCostPerUnit), 142, y + 5)
+        doc.text(fmtS(item.quantity * totalCostPerUnit), 165, y + 5)
+        doc.text(String(itemRemaining), 185, y + 5)
         
         doc.setDrawColor(243, 244, 246)
         doc.line(15, y + 7, 195, y + 7)
@@ -773,6 +775,7 @@ export default function DealDetailClient({ deal }: Props) {
                     <th>Grade</th>
                     <th style={{textAlign:'right'}}>Stock + Fee Cost</th>
                     <th style={{textAlign:'right'}}>Shipping/Unit</th>
+                    <th style={{textAlign:'right'}}>Repair Cost/Unit</th>
                     <th style={{textAlign:'right'}}>Total Cost/Unit</th>
                     <th style={{textAlign:'right'}}>Target Price</th>
                     <th style={{textAlign:'right'}}>Qty</th>
@@ -801,7 +804,7 @@ export default function DealDetailClient({ deal }: Props) {
 
                     const unitBidCost = Number(item.unit_cost || 0)
                     const stockPlusFeeCost = unitBidCost + dealFeePerUnit
-                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
+                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                     const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -815,6 +818,7 @@ export default function DealDetailClient({ deal }: Props) {
                         <td>{item.grade || '-'}</td>
                         <td style={{textAlign:'right'}}>{fmt(stockPlusFeeCost)}</td>
                         <td style={{textAlign:'right', color:'var(--accent-teal)'}}>{fmt(shippingCostPerUnit)}</td>
+                        <td style={{textAlign:'right', color:'var(--accent-orange)'}}>{fmt(Number(item.repair_cost || 0))}</td>
                         <td style={{textAlign:'right', fontWeight:600, color:'var(--accent-indigo)'}}>{fmt(totalCostPerUnit)}</td>
                         <td style={{textAlign:'right', fontWeight:600}}>{fmt(item.target_price)}</td>
                         <td style={{textAlign:'right', fontWeight: 600, color: availQty === 0 ? 'var(--text-muted)' : 'inherit'}}>{availQty}</td>

@@ -94,6 +94,7 @@ export interface DealItem {
   color?: string
   quantity: number
   unit_cost: number
+  repair_cost?: number
 }
 
 export interface Deal {

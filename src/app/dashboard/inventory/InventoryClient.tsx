@@ -46,7 +46,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   const { data: inventoryResult } = useQuery({
     queryKey: ['inventory', inventoryPage, debouncedSearch],
     queryFn: () => getAllInventory(inventoryPage, debouncedSearch),
-    initialData: debouncedSearch ? undefined : { data: inventory, total: inventoryTotal },
+    initialData: debouncedSearch ? undefined : { data: inventory, total: inventoryTotal, stageCounts: {} as Record<string, number> },
     staleTime: 15 * 1000,
   })
 

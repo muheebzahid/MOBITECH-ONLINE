@@ -206,7 +206,8 @@ export async function createDeal(formData: FormData) {
       color: i.color || null,
       carrier: i.carrier || null,
       quantity: parseInt(i.quantity) || 0,
-      unit_cost: parseFloat(i.unit_cost) || 0
+      unit_cost: parseFloat(i.unit_cost) || 0,
+      repair_cost: parseFloat(i.repair_cost) || 0
     }))
     await supabase.from('deal_items').insert(itemsToInsert)
   }
@@ -692,7 +693,8 @@ export async function updateDeal(dealId: string, formData: FormData) {
         color: i.color || null,
         carrier: i.carrier || null,
         quantity: parseInt(i.quantity) || 0,
-        unit_cost: parseFloat(i.unit_cost) || 0
+        unit_cost: parseFloat(i.unit_cost) || 0,
+        repair_cost: parseFloat(i.repair_cost) || 0
       }
       
       if (i.id && dbItemIds.includes(i.id)) {
@@ -1020,7 +1022,7 @@ export async function moveSkuToOnlineInventory(
     grade: origItem.grade,
     unit_cost: totalLandedCost, // Inherit landed cost
     logistics_cost: 0, 
-    repair_cost: 0,
+    repair_cost: Number(origItem.repair_cost || 0),
     status: 'AVAILABLE',
     location: 'DUBAI_WAREHOUSE',
     refurb_stage: 'SEPARATED'

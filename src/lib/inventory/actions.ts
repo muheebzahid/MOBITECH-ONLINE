@@ -128,19 +128,33 @@ export async function addInventoryBulk(dealId: string, items: any[]) {
     }
   }
 
-  const payload = items.map(item => ({
-    deal_id: dealId,
-    imei: item.imei ? String(item.imei).trim() : null,
-    serial_number: item.serial_number ? String(item.serial_number).trim() : null,
-    model: item.model || deal.model,
-    storage: item.storage || deal.storage,
-    color: item.color || deal.color,
-    grade: item.grade || deal.grade,
-    unit_cost: base_unit_cost,
-    logistics_cost: logistics_cost,
-    location: 'DUBAI_WAREHOUSE', // Default intake location
-    status: 'AVAILABLE'
-  }))
+  const payload = items.map(item => {
+    const modelToMatch = item.model || deal.model
+    const storageToMatch = item.storage || deal.storage
+    const gradeToMatch = item.grade || deal.grade
+
+    const matchingSku = deal.items?.find((sku: any) => 
+      sku.model?.toLowerCase() === modelToMatch?.toLowerCase() &&
+      (sku.storage || '').toLowerCase() === (storageToMatch || '').toLowerCase() &&
+      (sku.grade || '').toLowerCase() === (gradeToMatch || '').toLowerCase()
+    )
+    const skuRepairCost = matchingSku ? Number(matchingSku.repair_cost || 0) : 0
+
+    return {
+      deal_id: dealId,
+      imei: item.imei ? String(item.imei).trim() : null,
+      serial_number: item.serial_number ? String(item.serial_number).trim() : null,
+      model: modelToMatch,
+      storage: storageToMatch,
+      color: item.color || deal.color,
+      grade: gradeToMatch,
+      unit_cost: base_unit_cost,
+      logistics_cost: logistics_cost,
+      repair_cost: skuRepairCost,
+      location: 'DUBAI_WAREHOUSE', // Default intake location
+      status: 'AVAILABLE'
+    }
+  })
 
   const { error } = await supabase
     .from('inventory_items')
