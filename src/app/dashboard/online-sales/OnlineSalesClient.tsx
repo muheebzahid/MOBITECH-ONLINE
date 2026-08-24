@@ -4,7 +4,7 @@ import { useState, useTransition, useRef } from 'react'
 import PaginationBar from '@/components/PaginationBar'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
-import { createOnlineOrder, bulkCreateOnlineOrders, bulkFulfillAndShipOrders, assignImeiToOrderItem, deleteOnlineOrder } from '@/lib/online-sales/actions'
+import { createOnlineOrder, bulkCreateOnlineOrders, bulkFulfillAndShipOrders, assignImeiToOrderItem, deleteOnlineOrder, bulkUpdateOnlineOrderStatus } from '@/lib/online-sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import { exportToExcel } from '@/lib/utils/exportExcel'
 import { getAuditHistory } from '@/lib/audit/actions'
@@ -335,6 +335,40 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
     })
   }
 
+  const handleBulkMarkDelivered = () => {
+    const ordersToDeliver = Array.from(selectedOrders).filter(id => {
+      const order = currentOrders.find(o => o.id === id)
+      if (!order) return false
+      if (order.status === 'DELIVERED' || order.status === 'CANCELLED') return false
+      
+      if (order.status === 'SHIPPED') return true
+      
+      const assignedCount = order.inventory_items?.length || 0
+      const targetQty = order.items?.reduce((s: number, it: any) => s + (it.quantity || 0), 0) || 0
+      return assignedCount >= targetQty && targetQty > 0
+    })
+    
+    if (ordersToDeliver.length === 0) {
+      alert("No eligible orders selected! Only Shipped orders or fully-assigned Pending orders can be marked as Delivered.")
+      return
+    }
+    
+    if (confirm(`Are you sure you want to mark ${ordersToDeliver.length} selected order(s) as DELIVERED?`)) {
+      startTransition(async () => {
+        try {
+          const result = await bulkUpdateOnlineOrderStatus(platform, ordersToDeliver, 'DELIVERED')
+          if (result.success) {
+            setSelectedOrders(new Set())
+            queryClient.invalidateQueries({ queryKey: ['online-orders', platform] })
+            router.refresh()
+          }
+        } catch (err: any) {
+          alert(`Error updating orders: ${err.message}`)
+        }
+      })
+    }
+  }
+
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -453,6 +487,13 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
               <button className="btn-primary" onClick={handleOpenBulkFulfill}>
                 Bulk Fulfill & Ship ({selectedOrders.size})
               </button>
+              <button 
+                className="btn-ghost" 
+                onClick={handleBulkMarkDelivered} 
+                style={{ border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)' }}
+              >
+                Bulk Mark as Delivered
+              </button>
               <button className="btn-ghost" style={{ border: '1px solid var(--status-red)', color: 'var(--status-red)' }} onClick={handleBulkDelete}>
                 Delete Selected
               </button>
@@ -507,9 +548,9 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
             <tr>
               <th style={{ width: '40px' }}>
                 <input type="checkbox" onChange={e => {
-                  if (e.target.checked) setSelectedOrders(new Set(filtered.filter(o => o.status !== 'SHIPPED' && o.status !== 'DELIVERED').map(o => o.id)))
+                  if (e.target.checked) setSelectedOrders(new Set(filtered.map(o => o.id)))
                   else setSelectedOrders(new Set())
-                }} checked={filtered.length > 0 && selectedOrders.size === filtered.filter(o => o.status !== 'SHIPPED' && o.status !== 'DELIVERED').length} />
+                }} checked={filtered.length > 0 && selectedOrders.size === filtered.length} />
               </th>
               <th>Order Number</th>
               <th>Customer</th>
@@ -542,7 +583,6 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
                     <td>
                       <input 
                         type="checkbox" 
-                        disabled={order.status === 'SHIPPED' || order.status === 'DELIVERED'}
                         checked={selectedOrders.has(order.id)}
                         onChange={e => {
                           const newSet = new Set(selectedOrders)

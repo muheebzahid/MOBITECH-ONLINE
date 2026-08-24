@@ -444,3 +444,43 @@ export async function bulkFulfillAndShipOrders(platform: 'AMAZON' | 'REVIBE', as
   revalidatePath('/dashboard/inventory')
   return { success: true }
 }
+
+export async function bulkUpdateOnlineOrderStatus(platform: 'AMAZON' | 'REVIBE', orderIds: string[], status: string) {
+  const supabase = await createClient()
+
+  for (const id of orderIds) {
+    const { error } = await supabase
+      .from('online_orders')
+      .update({ status })
+      .eq('id', id)
+      
+    if (error) {
+      console.error(`Error updating status for order ${id}:`, error.message)
+      continue
+    }
+
+    if (status === 'DELIVERED') {
+      await supabase.from('inventory_items')
+        .update({ status: 'SOLD', refurb_stage: 'SOLD' })
+        .eq('online_order_id', id)
+    } else if (status === 'CANCELLED') {
+      await supabase.from('inventory_items')
+        .update({
+          online_order_id: null,
+          online_order_item_id: null,
+          status: 'AVAILABLE',
+          refurb_stage: 'READY_TO_SELL',
+          location: 'DUBAI_WAREHOUSE'
+        })
+        .eq('online_order_id', id)
+    } else if (status === 'SHIPPED') {
+      await supabase.from('inventory_items')
+        .update({ status: 'ASSIGNED', refurb_stage: 'ASSIGNED' })
+        .eq('online_order_id', id)
+    }
+  }
+
+  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+  revalidatePath('/dashboard/inventory')
+  return { success: true }
+}
