@@ -56,10 +56,10 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
 
   let onlineOrdersQuery = supabase
     .from('online_orders')
-    .select('id, total_amount, order_date')
+    .select('id, total_amount, sale_date')
     .neq('status', 'CANCELLED')
-  if (fromDate) onlineOrdersQuery = onlineOrdersQuery.gte('order_date', fromDate)
-  if (toDate) onlineOrdersQuery = onlineOrdersQuery.lte('order_date', toDate)
+  if (fromDate) onlineOrdersQuery = onlineOrdersQuery.gte('sale_date', fromDate)
+  if (toDate) onlineOrdersQuery = onlineOrdersQuery.lte('sale_date', toDate)
 
   let dealsQuery = supabase
     .from('deals')
