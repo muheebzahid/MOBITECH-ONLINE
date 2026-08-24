@@ -38,10 +38,11 @@ function fmtD(d: string | null | undefined) {
   return new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getOnlineOrders } from '@/lib/online-sales/actions'
 
 export default function OnlineSalesClient({ platform, initialOrders, readyItems, ordersTotal = 0, ordersPage = 0 }: Props) {
+  const queryClient = useQueryClient()
   const { data: ordersResult } = useQuery({
     queryKey: ['online-orders', platform, ordersPage],
     queryFn: () => getOnlineOrders(platform, ordersPage),
@@ -289,24 +290,39 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
     const file = e.target.files?.[0]
     if (!file) return
 
-    startTransition(async () => {
-      const reader = new FileReader()
-      reader.onload = async (evt) => {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(data, { type: 'array' })
-        const worksheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[worksheetName]
-        const json = XLSX.utils.sheet_to_json(worksheet) as any[]
-        
-        if (json.length > 0) {
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      startTransition(async () => {
+        try {
+          const data = new Uint8Array(evt.target?.result as ArrayBuffer)
+          const workbook = XLSX.read(data, { type: 'array' })
+          const worksheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[worksheetName]
+          const json = XLSX.utils.sheet_to_json(worksheet) as any[]
+          
+          if (!json || json.length === 0) {
+            alert('The uploaded Excel file is empty.')
+            return
+          }
+          
           const plainJson = JSON.parse(JSON.stringify(json))
-          await bulkCreateOnlineOrders(platform, plainJson)
+          const result = await bulkCreateOnlineOrders(platform, plainJson)
+          
+          if (result.error) {
+            alert(`Upload failed: ${result.error}`)
+          } else {
+            alert(`Successfully uploaded ${result.count || 0} order(s).`)
+            queryClient.invalidateQueries({ queryKey: ['online-orders', platform] })
+            router.refresh()
+          }
+        } catch (err: any) {
+          alert(`Error reading/uploading Excel: ${err.message}`)
+        } finally {
+          if (fileInputRef.current) fileInputRef.current.value = ''
         }
-        
-        if (fileInputRef.current) fileInputRef.current.value = ''
-      }
-      reader.readAsArrayBuffer(file)
-    })
+      })
+    }
+    reader.readAsArrayBuffer(file)
   }
 
   return (
