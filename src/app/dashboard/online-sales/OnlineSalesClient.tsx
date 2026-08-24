@@ -201,28 +201,77 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
 
   const handleOpenBulkFulfill = () => {
     const assignments: typeof bulkAssignments = []
+    const fullyAssignedOrders: { orderId: string; orderNumber: string }[] = []
+
     for (const orderId of Array.from(selectedOrders)) {
       const order = currentOrders.find(o => o.id === orderId)
       if (!order) continue
+
+      let orderNeedsScanning = false
       for (const item of order.items) {
-        if (!item.inventory_items || item.inventory_items.length < item.quantity) {
+        const assignedCount = item.inventory_items?.length || 0
+        if (assignedCount < item.quantity) {
+          orderNeedsScanning = true
           assignments.push({
             orderId: order.id,
             orderNumber: order.order_number,
             orderItemId: item.id,
             skuDetails: `${item.model} ${item.storage} ${item.grade}`,
-            needed: item.quantity - (item.inventory_items?.length || 0),
-            imeis: Array(item.quantity - (item.inventory_items?.length || 0)).fill('')
+            needed: item.quantity - assignedCount,
+            imeis: Array(item.quantity - assignedCount).fill('')
           })
         }
+      }
+
+      if (!orderNeedsScanning) {
+        fullyAssignedOrders.push({
+          orderId: order.id,
+          orderNumber: order.order_number
+        })
       }
     }
     
     if (assignments.length === 0) {
-      alert("All selected orders are already fully assigned!")
+      const orderNumbers = fullyAssignedOrders.map(o => o.orderNumber).join(', ')
+      if (confirm(`Orders (${orderNumbers}) are already fully assigned with IMEIs. Mark them as Shipped now?`)) {
+        startTransition(async () => {
+          try {
+            const emptyAssignments = fullyAssignedOrders.map(o => ({
+              orderId: o.orderId,
+              orderNumber: o.orderNumber,
+              orderItemId: '',
+              skuDetails: '',
+              needed: 0,
+              imeis: []
+            }))
+            const result = await bulkFulfillAndShipOrders(platform, emptyAssignments)
+            if (result.success) {
+              setSelectedOrders(new Set())
+              queryClient.invalidateQueries({ queryKey: ['online-orders', platform] })
+              router.refresh()
+            }
+          } catch (err: any) {
+            alert(`Error shipping orders: ${err.message}`)
+          }
+        })
+      }
       return
     }
-    setBulkAssignments(assignments)
+
+    // Append fully assigned orders so they get marked as Shipped upon submission
+    const mixedAssignments = [
+      ...assignments,
+      ...fullyAssignedOrders.map(o => ({
+        orderId: o.orderId,
+        orderNumber: o.orderNumber,
+        orderItemId: '',
+        skuDetails: 'Already fully assigned',
+        needed: 0,
+        imeis: []
+      }))
+    ]
+
+    setBulkAssignments(mixedAssignments)
     setShowFulfillModal(true)
   }
 
@@ -730,24 +779,30 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
                       Item: {assignment.skuDetails}
                     </div>
                     
-                    {assignment.imeis.map((imei, j) => (
-                      <div key={j} className="form-group" style={{ marginBottom: '8px' }}>
-                        <label className="form-label" style={{ fontSize: '12px' }}>Scan/Enter IMEI/Serial {j + 1}</label>
-                        <input 
-                          type="text" 
-                          className="form-input" 
-                          list="ready-items-list"
-                          placeholder="Scan barcode..."
-                          value={imei}
-                          onChange={e => {
-                            const newAssignments = [...bulkAssignments]
-                            newAssignments[i].imeis[j] = e.target.value
-                            setBulkAssignments(newAssignments)
-                          }}
-                          required
-                        />
+                    {assignment.needed === 0 ? (
+                      <div style={{ fontSize: '13px', color: 'var(--accent-teal)', fontWeight: 600 }}>
+                        ✓ Ready to Ship (All IMEIs already assigned)
                       </div>
-                    ))}
+                    ) : (
+                      assignment.imeis.map((imei, j) => (
+                        <div key={j} className="form-group" style={{ marginBottom: '8px' }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>Scan/Enter IMEI/Serial {j + 1}</label>
+                          <input 
+                            type="text" 
+                            className="form-input" 
+                            list="ready-items-list"
+                            placeholder="Scan barcode..."
+                            value={imei}
+                            onChange={e => {
+                              const newAssignments = [...bulkAssignments]
+                              newAssignments[i].imeis[j] = e.target.value
+                              setBulkAssignments(newAssignments)
+                            }}
+                            required
+                          />
+                        </div>
+                      ))
+                    )}
                   </div>
                 ))}
               </div>

@@ -18,7 +18,7 @@ export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: numbe
       .eq('platform', platform),
     supabase
       .from('online_orders')
-      .select('*, items:online_order_items(*), inventory_items(id, imei, serial_number)')
+      .select('*, items:online_order_items(*, inventory_items(id, imei, serial_number)), inventory_items(id, imei, serial_number)')
       .eq('platform', platform)
       .order('sale_date', { ascending: false })
       .range(from, to)
@@ -35,7 +35,7 @@ export async function getOnlineOrderById(id: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('online_orders')
-    .select('*, items:online_order_items(*), inventory_items(*)')
+    .select('*, items:online_order_items(*, inventory_items(*)), inventory_items(*)')
     .eq('id', id)
     .single()
 
