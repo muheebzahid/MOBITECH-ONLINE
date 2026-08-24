@@ -107,16 +107,32 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       : Promise.resolve({ data: null, error: null } as any)
   ])
 
-  let totalRevenue = 0
+  let wholesaleRevenue = 0
   if (!invErr && invoices) {
-    totalRevenue = invoices.filter((inv: any) => inv.status !== 'DRAFT').reduce((sum, inv) => sum + Number(inv.total_amount), 0)
+    wholesaleRevenue = invoices.filter((inv: any) => inv.status !== 'DRAFT').reduce((sum, inv) => sum + Number(inv.total_amount), 0)
   }
 
   let onlineRevenue = 0
   if (onlineOrders) {
     onlineRevenue = onlineOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0)
   }
-  totalRevenue += onlineRevenue
+
+  if (statementDateFilter) {
+    wholesaleRevenue = 0
+    let filteredRevenue = 0
+    if (lineItemsWithPrice && deals) {
+      const validDealIds = new Set(deals.map((d: any) => d.id))
+      lineItemsWithPrice.forEach((li: any) => {
+        if (li.invoices && li.invoices.status !== 'CANCELLED' && li.invoices.status !== 'DRAFT' && validDealIds.has(li.deal_id)) {
+          filteredRevenue += (li.quantity || 0) * (Number(li.unit_price) || 0)
+        }
+      })
+    }
+    wholesaleRevenue = filteredRevenue
+    onlineRevenue = 0
+  }
+
+  const totalRevenue = wholesaleRevenue + onlineRevenue
 
   const dealCosts: Record<string, { averageBaseCost: number, dealFeePerUnit: number, shippingCostPerUnit: number, amexProfitPerUnit: number }> = {}
   let amexProfit = 0
@@ -157,26 +173,6 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     activeLineItems = activeLineItems.filter((li: any) => validDealIds.has(li.deal_id))
   }
 
-  if (statementDateFilter) {
-    totalRevenue = 0
-    let filteredRevenue = 0
-    if (lineItemsWithPrice && deals) {
-      const validDealIds = new Set(deals.map((d: any) => d.id))
-      lineItemsWithPrice.forEach((li: any) => {
-        if (li.invoices && li.invoices.status !== 'CANCELLED' && li.invoices.status !== 'DRAFT' && validDealIds.has(li.deal_id)) {
-          filteredRevenue += (li.quantity || 0) * (Number(li.unit_price) || 0)
-        }
-      })
-    }
-    totalRevenue = filteredRevenue
-    onlineRevenue = 0
-  }
-
-  let cogs = 0
-  let cogsDevices = 0
-  let cogsLogistics = 0
-  let totalSoldShippingCost = 0
-  
   const dealSoldQuantities: Record<string, number> = {}
   if (allLineItemsForSnapshot) {
     allLineItemsForSnapshot.forEach((li: any) => {
@@ -186,6 +182,10 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     })
   }
 
+  let wholesaleCogsDevices = 0
+  let wholesaleCogsLogistics = 0
+  let wholesaleCogs = 0
+
   activeLineItems.forEach((li: any) => {
     if (li.deal_id) {
       const costs = dealCosts[li.deal_id]
@@ -193,22 +193,21 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         const itemUnitCost = li.deal_items?.unit_cost !== undefined ? Number(li.deal_items.unit_cost) : (costs.averageBaseCost - costs.dealFeePerUnit)
         const stockPlusFeeCost = itemUnitCost + costs.dealFeePerUnit
         
-        cogsDevices += li.quantity * stockPlusFeeCost
-        cogsLogistics += li.quantity * costs.shippingCostPerUnit
-        
-        const unitTotalCost = stockPlusFeeCost + costs.shippingCostPerUnit
-        cogs += li.quantity * unitTotalCost
-        totalSoldShippingCost += li.quantity * costs.shippingCostPerUnit
+        wholesaleCogsDevices += li.quantity * stockPlusFeeCost
+        wholesaleCogsLogistics += li.quantity * costs.shippingCostPerUnit
+        wholesaleCogs += li.quantity * (stockPlusFeeCost + costs.shippingCostPerUnit)
         
         amexProfit += li.quantity * (costs.amexProfitPerUnit || 0)
       }
     }
   })
 
+  let onlineCogsDevices = 0
+  let onlineCogsLogistics = 0
+  let onlineCogs = 0
+
   if (!statementDateFilter) {
     const validOnlineOrderIds = new Set(onlineOrders?.map((o: any) => o.id) || [])
-    let onlineCogsDevices = 0
-    let onlineCogsLogistics = 0
     if (onlineInventory) {
       onlineInventory.forEach(item => {
         if ((fromDate || toDate) && !validOnlineOrderIds.has(item.online_order_id)) {
@@ -218,11 +217,13 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         onlineCogsLogistics += Number(item.logistics_cost || 0)
       })
     }
-    cogsDevices += onlineCogsDevices
-    cogsLogistics += onlineCogsLogistics
-    cogs += (onlineCogsDevices + onlineCogsLogistics)
-    totalSoldShippingCost += onlineCogsLogistics
+    onlineCogs = onlineCogsDevices + onlineCogsLogistics
   }
+
+  const cogsDevices = wholesaleCogsDevices + onlineCogsDevices
+  const cogsLogistics = wholesaleCogsLogistics + onlineCogsLogistics
+  const cogs = wholesaleCogs + onlineCogs
+  const totalSoldShippingCost = wholesaleCogsLogistics + onlineCogsLogistics
 
   let onlineUnsoldValue = 0
   const { data: onlineUnsoldItems } = await supabase
@@ -267,6 +268,8 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     }
   }
 
+  const grossProfitWholesale = wholesaleRevenue - wholesaleCogs
+  const grossProfitOnline = onlineRevenue - onlineCogs
   const grossProfit = totalRevenue - cogs
   const netProfit = grossProfit + amexProfit - totalOpex
 
@@ -350,10 +353,20 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   return {
     usd: {
       revenue: totalRevenue,
+      revenueWholesale: wholesaleRevenue,
+      revenueOnline: onlineRevenue,
       cogs: cogs,
+      cogsWholesale: wholesaleCogs,
+      cogsOnline: onlineCogs,
       cogsDevices: cogsDevices,
       cogsLogistics: cogsLogistics,
+      wholesaleCogsDevices,
+      wholesaleCogsLogistics,
+      onlineCogsDevices,
+      onlineCogsLogistics,
       grossProfit: grossProfit,
+      grossProfitWholesale,
+      grossProfitOnline,
       amexProfit: amexProfit,
       freight: freightExpense,
       opex: totalOpex,
@@ -388,10 +401,20 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     },
     aed: {
       revenue: totalRevenue * USD_TO_AED,
+      revenueWholesale: wholesaleRevenue * USD_TO_AED,
+      revenueOnline: onlineRevenue * USD_TO_AED,
       cogs: cogs * USD_TO_AED,
+      cogsWholesale: wholesaleCogs * USD_TO_AED,
+      cogsOnline: onlineCogs * USD_TO_AED,
       cogsDevices: cogsDevices * USD_TO_AED,
       cogsLogistics: cogsLogistics * USD_TO_AED,
+      wholesaleCogsDevices: wholesaleCogsDevices * USD_TO_AED,
+      wholesaleCogsLogistics: wholesaleCogsLogistics * USD_TO_AED,
+      onlineCogsDevices: onlineCogsDevices * USD_TO_AED,
+      onlineCogsLogistics: onlineCogsLogistics * USD_TO_AED,
       grossProfit: grossProfit * USD_TO_AED,
+      grossProfitWholesale: grossProfitWholesale * USD_TO_AED,
+      grossProfitOnline: grossProfitOnline * USD_TO_AED,
       amexProfit: amexProfit * USD_TO_AED,
       freight: freightExpense * USD_TO_AED,
       opex: totalOpex * USD_TO_AED,

@@ -12,15 +12,27 @@ import AuditHistoryModal from '@/components/audit/AuditHistoryModal'
 
 type FinancialSummary = {
   revenue: number
+  revenueWholesale: number
+  revenueOnline: number
   cogs: number
+  cogsWholesale: number
+  cogsOnline: number
   cogsDevices: number
   cogsLogistics: number
+  wholesaleCogsDevices: number
+  wholesaleCogsLogistics: number
+  onlineCogsDevices: number
+  onlineCogsLogistics: number
   grossProfit: number
+  grossProfitWholesale: number
+  grossProfitOnline: number
   amexProfit: number
   freight: number
   opex: number
   netProfit: number
   inventoryAsset: number
+  inventoryAssetWholesale: number
+  inventoryAssetOnline: number
   treasury: {
     amexLimit: number
     amexStuck: number
@@ -325,8 +337,10 @@ export default function AccountingClient({
                 const headers = ['Category', 'Account Code & Description', 'Amount ($)']
                 const rows = [
                   ['ASSETS', '1010 - Cash & Liquid Treasury', bs?.liquidCash || 0],
-                  ['ASSETS', '1100 - Accounts Receivable', bs?.accountsReceivable || 0],
-                  ['ASSETS', '1200 - Inventory Asset Valuation', bs?.inventoryAsset || 0],
+                  ['ASSETS', '1110 - Accounts Receivable (Wholesale)', bs?.accountsReceivable || 0],
+                  ['ASSETS', '1120 - Accounts Receivable (Online)', 0],
+                  ['ASSETS', '1210 - Inventory Asset (Wholesale)', bs?.inventoryAssetWholesale || 0],
+                  ['ASSETS', '1220 - Inventory Asset (Online)', bs?.inventoryAssetOnline || 0],
                   ['ASSETS', 'TOTAL ASSETS', bs?.totalAssets || 0],
                   ['LIABILITIES', '2010 - Accounts Payable (Suppliers)', bs?.accountsPayable || 0],
                   ['LIABILITIES', '2020 - AMEX Credit Line Deployed', bs?.amexLiability || 0],
@@ -339,10 +353,18 @@ export default function AccountingClient({
               } else {
                 const headers = ['Line Item', 'Amount ($)']
                 const rows = [
-                  ['Sales Revenue (Invoiced)', data.revenue],
-                  ['Less: Cost of Goods (Deals)', data.cogsDevices],
-                  ['Less: Logistics Charges (Deals)', data.cogsLogistics],
-                  ['Gross Profit', data.grossProfit],
+                  ['Wholesale Sales (Deals) Revenue', data.revenueWholesale],
+                  ['Less: Cost of Goods (Deals)', data.wholesaleCogsDevices],
+                  ['Less: Logistics Cost (Deals)', data.wholesaleCogsLogistics],
+                  ['Wholesale Gross Profit', data.grossProfitWholesale],
+                  ['Online Sales Revenue', data.revenueOnline],
+                  ['Less: Cost of Goods (Online)', data.onlineCogsDevices],
+                  ['Less: Logistics Cost (Online)', data.onlineCogsLogistics],
+                  ['Online Gross Profit', data.grossProfitOnline],
+                  ['Total Combined Revenue', data.revenue],
+                  ['Less: Total Cost of Goods', data.cogsDevices],
+                  ['Less: Total Logistics Charges', data.cogsLogistics],
+                  ['Consolidated Gross Profit', data.grossProfit],
                   ['Plus: Amex Cashback Profit', data.amexProfit],
                   ['Operating Expenses', data.opex],
                   ['Net Profit / (Loss)', data.netProfit]
@@ -622,8 +644,13 @@ export default function AccountingClient({
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Accounts Receivable (Invoices Due)</span>
+                      <span style={{ color: 'var(--text-muted)' }}>Accounts Receivable (Wholesale)</span>
                       <span style={{ fontWeight: 600 }}>{formatCurrency(bs.accountsReceivable)}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Accounts Receivable (Online)</span>
+                      <span style={{ fontWeight: 600 }}>{formatCurrency(0)}</span>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
@@ -718,24 +745,70 @@ export default function AccountingClient({
           <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px' }}>Profit & Loss Statement (YTD)</h2>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Revenue */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 600, fontSize: '15px' }}>Sales Revenue (Invoiced)</span>
-              <span style={{ fontWeight: 600, fontSize: '15px' }}>{formatCurrency(data.revenue)}</span>
+            {/* 1. Wholesale Sales */}
+            <div style={{ padding: '12px 16px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: 'var(--accent-blue)', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                <span>Wholesale Sales (Deals)</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Wholesale Revenue</span>
+                <span>{formatCurrency(data.revenueWholesale)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+                <span>Less: Cost of Goods (Deals)</span>
+                <span>- {formatCurrency(data.wholesaleCogsDevices)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+                <span>Less: Logistics Cost (Deals)</span>
+                <span>- {formatCurrency(data.wholesaleCogsLogistics)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '14px', borderTop: '1px dashed var(--border)', paddingTop: '4px', color: 'var(--accent-blue)' }}>
+                <span>Wholesale Gross Profit</span>
+                <span>{formatCurrency(data.grossProfitWholesale)}</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-              <span style={{ fontSize: '14px', paddingLeft: '16px' }}>Less: Cost of Goods (Deals)</span>
-              <span style={{ fontSize: '14px' }}>- {formatCurrency(data.cogsDevices)}</span>
+
+            {/* 2. Online Sales */}
+            <div style={{ padding: '12px 16px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: 'var(--accent-purple)', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                <span>Online Sales (Amazon & Revibe)</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Online Revenue</span>
+                <span>{formatCurrency(data.revenueOnline)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+                <span>Less: Cost of Goods (Online)</span>
+                <span>- {formatCurrency(data.onlineCogsDevices)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+                <span>Less: Logistics Cost (Online)</span>
+                <span>- {formatCurrency(data.onlineCogsLogistics)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '14px', borderTop: '1px dashed var(--border)', paddingTop: '4px', color: 'var(--accent-purple)' }}>
+                <span>Online Gross Profit</span>
+                <span>{formatCurrency(data.grossProfitOnline)}</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '16px', color: 'var(--text-muted)', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: '14px', paddingLeft: '16px' }}>Less: Logistics Charges (Deals)</span>
-              <span style={{ fontSize: '14px' }}>- {formatCurrency(data.cogsLogistics)}</span>
-            </div>
-            
-            {/* Gross Profit */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--accent-green)' }}>Gross Profit</span>
-              <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--accent-green)' }}>{formatCurrency(data.grossProfit)}</span>
+
+            {/* 3. Consolidated Summary */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', borderTop: '2px solid var(--border)', paddingTop: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                <span>Total Combined Revenue</span>
+                <span>{formatCurrency(data.revenue)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '14px' }}>
+                <span>Less: Total Cost of Goods</span>
+                <span>- {formatCurrency(data.cogsDevices)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '14px' }}>
+                <span>Less: Total Logistics Charges</span>
+                <span>- {formatCurrency(data.cogsLogistics)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '16px', color: 'var(--accent-green)', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                <span>Consolidated Gross Profit</span>
+                <span>{formatCurrency(data.grossProfit)}</span>
+              </div>
             </div>
 
             {/* Amex Cashback Profit */}
