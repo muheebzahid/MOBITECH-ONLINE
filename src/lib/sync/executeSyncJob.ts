@@ -87,6 +87,62 @@ export async function executeSyncJob(input: { dealIds: string[]; userRole?: stri
       }
     }
   }
+  // ==> RESOLVE ONLINE ORDER NUMBER CONFLICTS <==
+  if (discovery.package.online_orders && discovery.package.online_orders.length > 0) {
+    const localOrderNumbers = discovery.package.online_orders.map((o: any) => o.order_number);
+    const { data: onlineOrders } = await onlineSupabase
+      .from('online_orders')
+      .select('id, order_number')
+      .in('order_number', localOrderNumbers);
+      
+    if (onlineOrders && onlineOrders.length > 0) {
+      const onlineOrderMap = new Map(onlineOrders.map((o: any) => [o.order_number, o.id]));
+      let needsRediscovery = false;
+      
+      for (const order of discovery.package.online_orders) {
+        if (onlineOrderMap.has(order.order_number)) {
+          const onlineId = onlineOrderMap.get(order.order_number);
+          if (order.id !== onlineId) {
+            const oldId = order.id;
+            
+            // 1. Update local online_order_items referencing the old ID
+            const { error: err1 } = await localSupabase
+              .from('online_order_items')
+              .update({ order_id: onlineId })
+              .eq('order_id', oldId);
+            if (err1) throw new Error(`Online Order Conflict Resolution: Failed to update local online_order_items: ${err1.message}`);
+            
+            // 2. Update local inventory_items referencing the old ID
+            const { error: err2 } = await localSupabase
+              .from('inventory_items')
+              .update({ online_order_id: onlineId })
+              .eq('online_order_id', oldId);
+            if (err2) throw new Error(`Online Order Conflict Resolution: Failed to update local inventory_items: ${err2.message}`);
+            
+            // 3. Update local online_orders ID
+            const { error: err3 } = await localSupabase
+              .from('online_orders')
+              .update({ id: onlineId })
+              .eq('id', oldId);
+            if (err3) throw new Error(`Online Order Conflict Resolution: Failed to update local online_orders ID: ${err3.message}`);
+            
+            needsRediscovery = true;
+          }
+        }
+      }
+      
+      if (needsRediscovery) {
+        discovery = await discoverDealPackage({ dealIds }, localSupabase)
+        if (!discovery.success || !discovery.package) {
+          return {
+            success: false,
+            status: 'FAILED',
+            error: discovery.error || 'Failed to re-discover deal package after online order conflict resolution'
+          }
+        }
+      }
+    }
+  }
 
   // 2. Build Manifest
   const manifest = buildSyncManifest(discovery)
