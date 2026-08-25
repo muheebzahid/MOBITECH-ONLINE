@@ -104,27 +104,57 @@ export async function executeSyncJob(input: { dealIds: string[]; userRole?: stri
           const onlineId = onlineOrderMap.get(order.order_number);
           if (order.id !== onlineId) {
             const oldId = order.id;
-            
-            // 1. Update local online_order_items referencing the old ID
+            const oldOrder = { ...order };
+
+            // 1. Insert a temporary dummy row in online_orders with onlineId to satisfy foreign keys
+            const { error: err0 } = await localSupabase
+              .from('online_orders')
+              .insert({
+                id: onlineId,
+                order_number: `TEMP_ALIGN_${oldId}`,
+                platform: oldOrder.platform,
+                sale_date: oldOrder.sale_date || new Date().toISOString(),
+                status: 'PENDING',
+                total_amount: 0
+              });
+            if (err0) throw new Error(`Online Order Conflict Resolution: Failed to insert dummy order: ${err0.message}`);
+
+            // 2. Update local online_order_items referencing the old ID to the new ID
             const { error: err1 } = await localSupabase
               .from('online_order_items')
               .update({ order_id: onlineId })
               .eq('order_id', oldId);
             if (err1) throw new Error(`Online Order Conflict Resolution: Failed to update local online_order_items: ${err1.message}`);
             
-            // 2. Update local inventory_items referencing the old ID
+            // 3. Update local inventory_items referencing the old ID to the new ID
             const { error: err2 } = await localSupabase
               .from('inventory_items')
               .update({ online_order_id: onlineId })
               .eq('online_order_id', oldId);
             if (err2) throw new Error(`Online Order Conflict Resolution: Failed to update local inventory_items: ${err2.message}`);
             
-            // 3. Update local online_orders ID
+            // 4. Delete the original old order row (no longer referenced by any items)
             const { error: err3 } = await localSupabase
               .from('online_orders')
-              .update({ id: onlineId })
+              .delete()
               .eq('id', oldId);
-            if (err3) throw new Error(`Online Order Conflict Resolution: Failed to update local online_orders ID: ${err3.message}`);
+            if (err3) throw new Error(`Online Order Conflict Resolution: Failed to delete old online_orders row: ${err3.message}`);
+            
+            // 5. Update the dummy online_orders row with the correct values from the original order
+            const { error: err4 } = await localSupabase
+              .from('online_orders')
+              .update({
+                order_number: oldOrder.order_number,
+                customer_name: oldOrder.customer_name,
+                customer_email: oldOrder.customer_email,
+                status: oldOrder.status,
+                total_amount: oldOrder.total_amount,
+                sale_date: oldOrder.sale_date,
+                created_at: oldOrder.created_at,
+                updated_at: oldOrder.updated_at
+              })
+              .eq('id', onlineId);
+            if (err4) throw new Error(`Online Order Conflict Resolution: Failed to restore order values: ${err4.message}`);
             
             needsRediscovery = true;
           }
