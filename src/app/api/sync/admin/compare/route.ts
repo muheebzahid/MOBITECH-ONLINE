@@ -2,32 +2,83 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createOnlineClient } from '@/lib/supabase/online-server'
 import { getUserRole } from '@/lib/admin/actions'
+import { SYNC_TABLES, SYNC_MODULES, ALWAYS_EXCLUDE_FIELDS } from '@/lib/sync/syncTableConfig'
 
 export const dynamic = 'force-dynamic'
 
-function formatDiff(local: any, online: any, fields: { key: string; label: string; fmt?: (v: any) => string }[]): string {
-  if (!online) {
-    return 'Entire Record Missing in Online Cloud ERP (Not created yet)'
-  }
+/**
+ * Comprehensive full-mirror audit.
+ *
+ * Reads ALL business tables from both local (master) and online ERP,
+ * compares every record field-by-field, and returns a structured diff
+ * report grouped by module.
+ *
+ * IMPORTANT: This endpoint is 100% READ-ONLY.
+ * It never modifies local or online databases.
+ *
+ * Detects three issue types:
+ *   MISSING_ONLINE  – record exists locally but not in cloud
+ *   OUT_OF_DATE     – record exists in both but fields differ (local wins)
+ *   EXTRA_ONLINE    – record exists in cloud but NOT locally (will be deleted on sync)
+ */
 
-  const diffs: string[] = []
-  for (const f of fields) {
-    const locVal = local[f.key]
-    const onlVal = online[f.key]
+function diffFields(local: any, online: any, excludeFields: string[]): { key: string; localVal: string; onlineVal: string }[] {
+  const diffs: { key: string; localVal: string; onlineVal: string }[] = []
+  const allKeys = new Set([...Object.keys(local), ...Object.keys(online)])
 
-    const strLoc = f.fmt ? f.fmt(locVal) : String(locVal ?? '—')
-    const strOnl = f.fmt ? f.fmt(onlVal) : String(onlVal ?? '—')
+  for (const key of allKeys) {
+    if (excludeFields.includes(key)) continue
 
-    if (String(locVal ?? '').trim() !== String(onlVal ?? '').trim()) {
-      diffs.push(`${f.label}: ${strLoc} (Local) vs ${strOnl} (Cloud)`)
+    const locVal = local[key]
+    const onlVal = online[key]
+
+    // Normalize for comparison
+    const locStr = locVal === null || locVal === undefined ? '' : typeof locVal === 'object' ? JSON.stringify(locVal) : String(locVal).trim()
+    const onlStr = onlVal === null || onlVal === undefined ? '' : typeof onlVal === 'object' ? JSON.stringify(onlVal) : String(onlVal).trim()
+
+    if (locStr !== onlStr) {
+      diffs.push({
+        key,
+        localVal: locStr || '—',
+        onlineVal: onlStr || '—'
+      })
     }
   }
+  return diffs
+}
 
-  if (diffs.length === 0) {
-    return 'Updated locally with newer timestamp'
+function formatDiffSummary(diffs: { key: string; localVal: string; onlineVal: string }[]): string {
+  if (diffs.length === 0) return 'Records match'
+  return diffs.map(d => `${d.key}: ${d.localVal} (Local) vs ${d.onlineVal} (Cloud)`).join(' | ')
+}
+
+async function fetchAllRecords(supabase: any, tableName: string): Promise<any[]> {
+  // Supabase returns max 1000 rows per request. Paginate to get all.
+  const allRecords: any[] = []
+  let from = 0
+  const pageSize = 1000
+
+  while (true) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .range(from, from + pageSize - 1)
+      .order('id', { ascending: true })
+
+    if (error) {
+      // Table might not exist on online — return empty
+      console.error(`[Audit] Error fetching ${tableName}: ${error.message}`)
+      return allRecords
+    }
+
+    if (!data || data.length === 0) break
+    allRecords.push(...data)
+
+    if (data.length < pageSize) break
+    from += pageSize
   }
 
-  return diffs.join(' | ')
+  return allRecords
 }
 
 export async function GET() {
@@ -40,251 +91,143 @@ export async function GET() {
     const localSupabase = await createClient()
     const onlineSupabase = createOnlineClient()
 
-    // 1. Fetch Local Records
-    const [
-      { data: localDeals },
-      { data: localClients },
-      { data: localInvoices },
-      { data: localShipments },
-      { data: localPayments },
-      { data: localInventory },
-      { data: localOnlineOrders },
-      { data: localExpenses }
-    ] = await Promise.all([
-      localSupabase.from('deals').select('id, deal_number, supplier, model, quantity, total_commitment, status, updated_at'),
-      localSupabase.from('clients').select('id, name, email, phone, address, updated_at'),
-      localSupabase.from('invoices').select('id, invoice_number, customer_name, total_amount, balance_due, status, updated_at'),
-      localSupabase.from('shipments').select('id, shipment_number, status, freight_cost, duty_amount, updated_at'),
-      localSupabase.from('payments').select('id, invoice_id, amount, payment_date, payment_method, reference_number'),
-      localSupabase.from('inventory_items').select('id, deal_id, imei, model, location, status, unit_cost, updated_at'),
-      localSupabase.from('online_orders').select('id, order_number, platform, total_amount, status, updated_at'),
-      localSupabase.from('operating_expenses').select('id, category, description, amount, expense_date, updated_at')
-    ])
+    // Audit every table in parallel
+    const tableAudits = await Promise.all(
+      SYNC_TABLES.map(async (config) => {
+        const [localRecords, onlineRecords] = await Promise.all([
+          fetchAllRecords(localSupabase, config.table),
+          fetchAllRecords(onlineSupabase, config.table)
+        ])
 
-    // 2. Fetch Online Records with functional fields for diffing
-    const [
-      { data: onlineDeals },
-      { data: onlineClients },
-      { data: onlineInvoices },
-      { data: onlineShipments },
-      { data: onlinePayments },
-      { data: onlineInventory },
-      { data: onlineOnlineOrders },
-      { data: onlineExpenses }
-    ] = await Promise.all([
-      onlineSupabase.from('deals').select('id, deal_number, supplier, model, quantity, total_commitment, status, updated_at'),
-      onlineSupabase.from('clients').select('id, name, email, phone, address, updated_at'),
-      onlineSupabase.from('invoices').select('id, invoice_number, customer_name, total_amount, balance_due, status, updated_at'),
-      onlineSupabase.from('shipments').select('id, shipment_number, status, freight_cost, duty_amount, updated_at'),
-      onlineSupabase.from('payments').select('id, invoice_id, amount, payment_date, payment_method, reference_number'),
-      onlineSupabase.from('inventory_items').select('id, deal_id, imei, model, location, status, unit_cost, updated_at'),
-      onlineSupabase.from('online_orders').select('id, order_number, platform, total_amount, status, updated_at'),
-      onlineSupabase.from('operating_expenses').select('id, category, description, amount, expense_date, updated_at')
-    ])
+        const localMap = new Map(localRecords.map(r => [r.id, r]))
+        const onlineMap = new Map(onlineRecords.map(r => [r.id, r]))
 
-    const onlineDealsMap = new Map((onlineDeals || []).map(r => [r.id, r]))
-    const onlineClientsMap = new Map((onlineClients || []).map(r => [r.id, r]))
-    const onlineInvoicesMap = new Map((onlineInvoices || []).map(r => [r.id, r]))
-    const onlineShipmentsMap = new Map((onlineShipments || []).map(r => [r.id, r]))
-    const onlinePaymentsMap = new Map((onlinePayments || []).map(r => [r.id, r]))
-    const onlineInventoryMap = new Map((onlineInventory || []).map(r => [r.id, r]))
-    const onlineOrdersMap = new Map((onlineOnlineOrders || []).map(r => [r.id, r]))
-    const onlineExpensesMap = new Map((onlineExpenses || []).map(r => [r.id, r]))
+        const excludeFields = [...ALWAYS_EXCLUDE_FIELDS, ...(config.compareExcludeFields || [])]
 
-    // Auditor helper with exact diff formatting and href link generation
-    const auditModule = (
-      localList: any[] = [],
-      onlineMap: Map<string, any>,
-      getHref: (item: any) => string,
-      fieldsToDiff: { key: string; label: string; fmt?: (v: any) => string }[]
-    ) => {
-      let missing = 0
-      let outOfDate = 0
-      let synced = 0
-      const missingRecords: any[] = []
+        let missing = 0
+        let outOfDate = 0
+        let extraOnline = 0
+        let synced = 0
+        const items: any[] = []
 
-      for (const item of localList) {
-        if (!item.id) continue
+        // Check local records against online
+        for (const localRec of localRecords) {
+          if (!localRec.id) continue
+          const onlineRec = onlineMap.get(localRec.id)
+          let identifier: string
+          try {
+            identifier = config.identifier(localRec)
+          } catch {
+            identifier = localRec.id
+          }
 
-        const href = getHref(item)
-        const onlineItem = onlineMap.get(item.id)
-
-        if (!onlineItem) {
-          missing++
-          missingRecords.push({
-            ...item,
-            issue: 'MISSING_ONLINE',
-            diff_detail: formatDiff(item, null, fieldsToDiff),
-            href
-          })
-        } else {
-          const itemUpdated = item.updated_at
-          const onlineUpdated = onlineItem.updated_at
-          const isTimeDiff = itemUpdated && onlineUpdated && new Date(itemUpdated).getTime() > new Date(onlineUpdated).getTime() + 2000
-
-          const diffText = formatDiff(item, onlineItem, fieldsToDiff)
-          const hasFieldDiff = diffText !== 'Updated locally with newer timestamp'
-
-          if (isTimeDiff || hasFieldDiff) {
-            outOfDate++
-            missingRecords.push({
-              ...item,
-              issue: 'OUT_OF_DATE',
-              diff_detail: diffText,
-              href
+          if (!onlineRec) {
+            missing++
+            items.push({
+              id: localRec.id,
+              table: config.table,
+              identifier,
+              issue: 'MISSING_ONLINE',
+              diff_detail: 'Entire record missing in Online Cloud ERP',
+              field_diffs: [],
+              href: config.href(localRec),
+              action_preview: 'CREATE on cloud'
             })
           } else {
-            synced++
+            const fieldDiffs = diffFields(localRec, onlineRec, excludeFields)
+            if (fieldDiffs.length > 0) {
+              outOfDate++
+              items.push({
+                id: localRec.id,
+                table: config.table,
+                identifier,
+                issue: 'OUT_OF_DATE',
+                diff_detail: formatDiffSummary(fieldDiffs),
+                field_diffs: fieldDiffs.slice(0, 10), // Cap at 10 fields for UI
+                href: config.href(localRec),
+                action_preview: `UPDATE ${fieldDiffs.length} field(s) on cloud`
+              })
+            } else {
+              synced++
+            }
           }
         }
-      }
 
-      return { total: localList.length, missing, outOfDate, synced, items: missingRecords }
-    }
-
-    const dealsAudit = auditModule(
-      localDeals || [],
-      onlineDealsMap,
-      item => `/dashboard/deals/${item.id}`,
-      [
-        { key: 'status', label: 'Status' },
-        { key: 'quantity', label: 'Qty' },
-        { key: 'total_commitment', label: 'Total Cost', fmt: v => `$${Number(v || 0).toLocaleString()}` },
-        { key: 'supplier', label: 'Supplier' }
-      ]
-    )
-
-    const clientsAudit = auditModule(
-      localClients || [],
-      onlineClientsMap,
-      item => `/dashboard/clients/${item.id}`,
-      [
-        { key: 'name', label: 'Name' },
-        { key: 'email', label: 'Email' },
-        { key: 'phone', label: 'Phone' }
-      ]
-    )
-
-    const invoicesAudit = auditModule(
-      localInvoices || [],
-      onlineInvoicesMap,
-      item => `/dashboard/sales/${item.id}`,
-      [
-        { key: 'status', label: 'Status' },
-        { key: 'total_amount', label: 'Total Amount', fmt: v => `$${Number(v || 0).toLocaleString()}` },
-        { key: 'balance_due', label: 'Balance Due', fmt: v => `$${Number(v || 0).toLocaleString()}` }
-      ]
-    )
-
-    const shipmentsAudit = auditModule(
-      localShipments || [],
-      onlineShipmentsMap,
-      item => `/dashboard/logistics/${item.id}`,
-      [
-        { key: 'status', label: 'Status' },
-        { key: 'freight_cost', label: 'Freight Cost', fmt: v => `$${Number(v || 0).toLocaleString()}` },
-        { key: 'duty_amount', label: 'Duty Amount', fmt: v => `$${Number(v || 0).toLocaleString()}` }
-      ]
-    )
-
-    const paymentsAudit = auditModule(
-      localPayments || [],
-      onlinePaymentsMap,
-      item => `/dashboard/sales/${item.invoice_id}`,
-      [
-        { key: 'amount', label: 'Amount', fmt: v => `$${Number(v || 0).toLocaleString()}` },
-        { key: 'payment_method', label: 'Method' },
-        { key: 'reference_number', label: 'Ref #' }
-      ]
-    )
-
-    const inventoryAudit = auditModule(
-      localInventory || [],
-      onlineInventoryMap,
-      item => `/dashboard/inventory`,
-      [
-        { key: 'status', label: 'Status' },
-        { key: 'location', label: 'Location' },
-        { key: 'unit_cost', label: 'Unit Cost', fmt: v => `$${Number(v || 0).toLocaleString()}` }
-      ]
-    )
-
-    const ordersAudit = auditModule(
-      localOnlineOrders || [],
-      onlineOrdersMap,
-      item => `/dashboard/online-sales`,
-      [
-        { key: 'status', label: 'Status' },
-        { key: 'total_amount', label: 'Total Amount', fmt: v => `$${Number(v || 0).toLocaleString()}` },
-        { key: 'platform', label: 'Platform' }
-      ]
-    )
-
-    const expensesAudit = auditModule(
-      localExpenses || [],
-      onlineExpensesMap,
-      item => `/dashboard/accounting`,
-      [
-        { key: 'category', label: 'Category' },
-        { key: 'description', label: 'Description' },
-        { key: 'amount', label: 'Amount', fmt: v => `$${Number(v || 0).toLocaleString()}` },
-        { key: 'expense_date', label: 'Expense Date' }
-      ]
-    )
-
-    // Map unsynced items back to deal IDs for sync payload execution
-    const unsyncedDealIds = new Set<string>()
-    for (const d of dealsAudit.items) {
-      unsyncedDealIds.add(d.id)
-    }
-
-    if (invoicesAudit.items.length > 0) {
-      const unsyncedInvIds = invoicesAudit.items.map(i => i.id)
-      const { data: invLines } = await localSupabase
-        .from('invoice_line_items')
-        .select('deal_id')
-        .in('invoice_id', unsyncedInvIds)
-
-      if (invLines) {
-        for (const line of invLines) {
-          if (line.deal_id) unsyncedDealIds.add(line.deal_id)
+        // Check for orphans (online-only records not in local master)
+        for (const onlineRec of onlineRecords) {
+          if (!onlineRec.id) continue
+          if (!localMap.has(onlineRec.id)) {
+            extraOnline++
+            let identifier: string
+            try {
+              identifier = config.identifier(onlineRec)
+            } catch {
+              identifier = onlineRec.id
+            }
+            items.push({
+              id: onlineRec.id,
+              table: config.table,
+              identifier,
+              issue: 'EXTRA_ONLINE',
+              diff_detail: 'Record exists in cloud but NOT in Master ERP — will be DELETED on sync',
+              field_diffs: [],
+              href: config.href(onlineRec),
+              action_preview: 'DELETE from cloud'
+            })
+          }
         }
+
+        return {
+          table: config.table,
+          displayName: config.displayName,
+          module: config.module,
+          total_local: localRecords.length,
+          total_online: onlineRecords.length,
+          missing,
+          outOfDate,
+          extraOnline,
+          synced,
+          items
+        }
+      })
+    )
+
+    // Group results by module
+    const moduleMap: Record<string, {
+      displayName: string
+      tables: typeof tableAudits
+      total_local: number
+      total_online: number
+      missing: number
+      outOfDate: number
+      extraOnline: number
+      synced: number
+      items: any[]
+    }> = {}
+
+    for (const mod of SYNC_MODULES) {
+      const moduleTables = tableAudits.filter(t => t.module === mod.key)
+      moduleMap[mod.key] = {
+        displayName: mod.label,
+        tables: moduleTables,
+        total_local: moduleTables.reduce((s, t) => s + t.total_local, 0),
+        total_online: moduleTables.reduce((s, t) => s + t.total_online, 0),
+        missing: moduleTables.reduce((s, t) => s + t.missing, 0),
+        outOfDate: moduleTables.reduce((s, t) => s + t.outOfDate, 0),
+        extraOnline: moduleTables.reduce((s, t) => s + t.extraOnline, 0),
+        synced: moduleTables.reduce((s, t) => s + t.synced, 0),
+        items: moduleTables.flatMap(t => t.items)
       }
     }
 
-    for (const invItem of inventoryAudit.items) {
-      if (invItem.deal_id) unsyncedDealIds.add(invItem.deal_id)
-    }
-
-    const totalLocalRecords =
-      dealsAudit.total +
-      clientsAudit.total +
-      invoicesAudit.total +
-      shipmentsAudit.total +
-      paymentsAudit.total +
-      inventoryAudit.total +
-      ordersAudit.total +
-      expensesAudit.total
-
-    const totalMissingOnline =
-      dealsAudit.missing +
-      clientsAudit.missing +
-      invoicesAudit.missing +
-      shipmentsAudit.missing +
-      paymentsAudit.missing +
-      inventoryAudit.missing +
-      ordersAudit.missing +
-      expensesAudit.missing
-
-    const totalOutOfDate =
-      dealsAudit.outOfDate +
-      clientsAudit.outOfDate +
-      invoicesAudit.outOfDate +
-      shipmentsAudit.outOfDate +
-      paymentsAudit.outOfDate +
-      inventoryAudit.outOfDate +
-      ordersAudit.outOfDate +
-      expensesAudit.outOfDate
+    // Global summary
+    const totalLocal = tableAudits.reduce((s, t) => s + t.total_local, 0)
+    const totalOnline = tableAudits.reduce((s, t) => s + t.total_online, 0)
+    const totalMissing = tableAudits.reduce((s, t) => s + t.missing, 0)
+    const totalOutOfDate = tableAudits.reduce((s, t) => s + t.outOfDate, 0)
+    const totalExtraOnline = tableAudits.reduce((s, t) => s + t.extraOnline, 0)
+    const totalSynced = tableAudits.reduce((s, t) => s + t.synced, 0)
+    const totalChanges = totalMissing + totalOutOfDate + totalExtraOnline
 
     return NextResponse.json({
       success: true,
@@ -292,25 +235,30 @@ export async function GET() {
       destination_project_ref: 'aivcmkwclfipntadipec',
       destination_domain: 'the-workflows.com',
       summary: {
-        total_local_records: totalLocalRecords,
-        total_missing_online: totalMissingOnline,
+        total_local_records: totalLocal,
+        total_online_records: totalOnline,
+        total_missing_online: totalMissing,
         total_out_of_date: totalOutOfDate,
-        total_synced_online: totalLocalRecords - totalMissingOnline - totalOutOfDate,
-        unsynced_deal_count: unsyncedDealIds.size
+        total_extra_online: totalExtraOnline,
+        total_synced: totalSynced,
+        total_changes_required: totalChanges,
+        is_fully_synced: totalChanges === 0
       },
-      unsynced_deal_ids: Array.from(unsyncedDealIds),
-      modules: {
-        deals: dealsAudit,
-        clients: clientsAudit,
-        invoices: invoicesAudit,
-        shipments: shipmentsAudit,
-        payments: paymentsAudit,
-        inventory: inventoryAudit,
-        online_orders: ordersAudit,
-        expenses: expensesAudit
-      }
+      modules: moduleMap,
+      tables: tableAudits.map(t => ({
+        table: t.table,
+        displayName: t.displayName,
+        module: t.module,
+        total_local: t.total_local,
+        total_online: t.total_online,
+        missing: t.missing,
+        outOfDate: t.outOfDate,
+        extraOnline: t.extraOnline,
+        synced: t.synced
+      }))
     })
   } catch (err: any) {
+    console.error('[Audit] Fatal error:', err)
     return NextResponse.json({ success: false, error: err.message || 'Internal audit error' }, { status: 500 })
   }
 }
