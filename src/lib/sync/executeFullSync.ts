@@ -139,7 +139,7 @@ export async function executeFullMirrorSync(
       // Fetch all local records (read-only from master)
       const localRecords = await fetchAllRecords(localSupabase, config.table)
 
-      // Sanitize auth-user FK fields
+      // Sanitize auth-user FK fields and strip generated columns
       const sanitizedRecords = localRecords.map(rec => {
         const copy = { ...rec }
         if (config.authUserFields) {
@@ -149,11 +149,10 @@ export async function executeFullMirrorSync(
             }
           }
         }
-        // Handle file URLs pointing to local storage
-        if (config.fileUrlFields) {
-          for (const field of config.fileUrlFields) {
-            // Keep URLs as-is for now; file upload is handled separately
-            // Local URLs (127.0.0.1) will remain but won't break the sync
+        // Strip PostgreSQL GENERATED ALWAYS columns — DB computes these automatically
+        if (config.generatedColumns) {
+          for (const field of config.generatedColumns) {
+            delete copy[field]
           }
         }
         return copy

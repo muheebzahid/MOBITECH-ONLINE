@@ -23,6 +23,8 @@ export interface SyncTableConfig {
   fileUrlFields?: string[]
   /** Fields to exclude from diff comparison (e.g. auto-generated timestamps) */
   compareExcludeFields?: string[]
+  /** PostgreSQL GENERATED ALWAYS columns — must be stripped from upsert payloads */
+  generatedColumns?: string[]
 }
 
 /**
@@ -63,6 +65,7 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     identifier: (r) => r.shipment_number || r.id,
     href: (r) => `/dashboard/logistics/${r.id}`,
     authUserFields: ['created_by'],
+    generatedColumns: ['total_logistics_cost'],
   },
   {
     table: 'online_orders',
@@ -167,6 +170,7 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     upsertOrder: 20,
     identifier: (r) => r.description || r.id,
     href: (r) => `/dashboard/sales/${r.invoice_id}`,
+    generatedColumns: ['total_price'],
   },
   {
     table: 'payments',
@@ -183,6 +187,7 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     upsertOrder: 22,
     identifier: (r) => r.imei || r.sku || r.model || r.id,
     href: (r) => `/dashboard/inventory`,
+    generatedColumns: ['total_cost'],
   },
 
   // ── Tier 3: Third-level children ──────────────────────────────
@@ -193,6 +198,7 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     upsertOrder: 30,
     identifier: (r) => `${r.previous_status || '?'} → ${r.new_status || '?'}`,
     href: (r) => `/dashboard/inventory`,
+    authUserFields: ['changed_by'],
   },
 
   // ── Tier 4: Standalone finance / treasury ─────────────────────

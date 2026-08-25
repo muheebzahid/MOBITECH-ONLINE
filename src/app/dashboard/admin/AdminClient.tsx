@@ -220,9 +220,25 @@ export default function AdminClient({ users }: Props) {
 
           {/* Sync Success Banner */}
           {syncResult && (
-            <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', fontSize: '13.5px', marginBottom: '20px' }}>
-              <strong>✅ Full Mirror Sync Completed!</strong> Upserted {syncResult.total_upserted} records, deleted {syncResult.total_deleted} orphans.
-              {syncResult.total_errors > 0 && <span style={{ color: '#fbbf24' }}> ({syncResult.total_errors} errors encountered)</span>}
+            <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.4)', fontSize: '13.5px', marginBottom: '20px' }}>
+              <div style={{ color: '#34d399', marginBottom: syncResult.table_results ? '10px' : 0 }}>
+                <strong>✅ Full Mirror Sync Completed!</strong> Upserted {syncResult.total_upserted} records, deleted {syncResult.total_deleted} orphans.
+                {syncResult.total_errors > 0 && <span style={{ color: '#fbbf24' }}> ⚠️ {syncResult.total_errors} errors encountered — see details below</span>}
+              </div>
+              {syncResult.table_results && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                  {syncResult.table_results.map((tr: any) => (
+                    <span key={tr.table} style={{
+                      fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                      background: tr.errors.length > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+                      color: tr.errors.length > 0 ? '#f87171' : '#34d399',
+                      border: `1px solid ${tr.errors.length > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.2)'}`
+                    }}>
+                      {tr.displayName}: {tr.upserted}↑ {tr.deleted}🗑{tr.errors.length > 0 ? ` ⚠${tr.errors.length}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
