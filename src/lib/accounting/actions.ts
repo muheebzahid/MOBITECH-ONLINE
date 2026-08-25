@@ -94,7 +94,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     invoicesQuery,
     onlineOrdersQuery,
     dealsQuery,
-    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(unit_cost), invoices!inner(id, status, issue_date)'),
+    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(unit_cost), invoices!inner(id, status, issue_date, client_id)'),
     supabase.from('invoice_line_items').select('quantity, deal_id, invoices!inner(status)'),
     supabase.from('inventory_items').select('unit_cost, logistics_cost, online_order_id').not('online_order_id', 'is', null),
     supabase.from('shipments').select('total_logistics_cost'),
@@ -161,7 +161,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
 
   const validInvoiceIds = new Set(invoices?.map((i: any) => i.id) || [])
   let activeLineItems = (allLineItems || []).filter(
-    (li: any) => li.invoices && li.invoices.status !== 'CANCELLED' && li.invoices.status !== 'DRAFT'
+    (li: any) => li.invoices && li.invoices.status !== 'CANCELLED' && li.invoices.status !== 'DRAFT' && li.invoices.client_id !== '4b6cd459-dd29-4be7-a28e-58cbbed31285'
   )
   
   if (fromDate || toDate) {
