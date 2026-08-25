@@ -37,6 +37,7 @@ export default function AdminClient({ users }: Props) {
   const [auditData, setAuditData] = useState<any>(null)
   const [auditError, setAuditError] = useState<string | null>(null)
   const [activeModuleTab, setActiveModuleTab] = useState('deals')
+  const [issueFilter, setIssueFilter] = useState<'ALL' | 'MISSING_ONLINE' | 'OUT_OF_DATE' | 'EXTRA_ONLINE'>('ALL')
 
   // Sync Execution State
   const [showSyncConfirm, setShowSyncConfirm] = useState(false)
@@ -332,7 +333,44 @@ export default function AdminClient({ users }: Props) {
                   )}
                 </div>
 
-                {getModuleData(activeModuleTab).items?.length === 0 ? (
+                {/* Issue Type Filter Bar */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                  {([
+                    { key: 'ALL', label: 'All Changes', color: '#60a5fa', count: getModuleData(activeModuleTab).items?.length || 0 },
+                    { key: 'MISSING_ONLINE', label: '➕ To Create', color: '#f43f5e', count: getModuleData(activeModuleTab).missing || 0 },
+                    { key: 'OUT_OF_DATE', label: '✏️ To Update', color: '#f59e0b', count: getModuleData(activeModuleTab).outOfDate || 0 },
+                    { key: 'EXTRA_ONLINE', label: '🗑️ To Delete', color: '#a855f7', count: getModuleData(activeModuleTab).extraOnline || 0 },
+                  ] as const).map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setIssueFilter(f.key)}
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: issueFilter === f.key ? `1px solid ${f.color}` : '1px solid #334155',
+                        background: issueFilter === f.key ? `${f.color}20` : '#1e293b',
+                        color: issueFilter === f.key ? f.color : '#94a3b8',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {f.label}
+                      <span style={{ fontSize: '10px', background: issueFilter === f.key ? `${f.color}30` : '#334155', padding: '1px 6px', borderRadius: '8px', color: f.count > 0 ? f.color : '#64748b' }}>
+                        {f.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {(() => {
+                  const allItems = getModuleData(activeModuleTab).items || []
+                  const filteredItems = issueFilter === 'ALL' ? allItems : allItems.filter((i: any) => i.issue === issueFilter)
+                  
+                  return filteredItems.length === 0 ? (
                   <div style={{ padding: '24px', textAlign: 'center', color: '#10b981', fontSize: '14px', fontWeight: 500 }}>
                     ✅ All records in this module are 100% up to date in the Online Cloud ERP!
                   </div>
@@ -349,7 +387,7 @@ export default function AdminClient({ users }: Props) {
                         </tr>
                       </thead>
                       <tbody>
-                        {getModuleData(activeModuleTab).items.map((item: any) => (
+                        {filteredItems.map((item: any) => (
                           <tr key={`${item.table}-${item.id}`} style={{ borderBottom: '1px solid #1e293b' }}>
                             <td style={{ padding: '10px 8px', color: '#64748b', fontSize: '11px' }}>
                               {item.table}
@@ -388,7 +426,8 @@ export default function AdminClient({ users }: Props) {
                       </tbody>
                     </table>
                   </div>
-                )}
+                )
+                })()}
               </div>
 
               {/* Per-table breakdown */}
