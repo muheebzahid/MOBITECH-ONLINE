@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { SYNC_TABLES } from './syncTableConfig'
+import { SYNC_TABLES, SyncTableConfig } from './syncTableConfig'
 
 /**
  * Full Mirror Sync Engine
@@ -7,13 +7,15 @@ import { SYNC_TABLES } from './syncTableConfig'
  * Mirrors the entire local (master) ERP to the online cloud ERP.
  * - Upserts ALL local records to online (in FK-safe order)
  * - Deletes orphan records from online that don't exist locally (in reverse FK order)
- * - Sanitizes auth-user FK references that don't exist in cloud
+ * - Sanitizes auth-user FK references that don't exist in cloud (maps matching emails)
+ * - Strips PostgreSQL GENERATED ALWAYS columns (computed automatically by DB)
+ * - Dynamically strips columns not present in online schema
  *
  * IMPORTANT: This engine NEVER modifies the local/master ERP.
  * All writes go to the online Supabase instance only.
  */
 
-interface SyncTableResult {
+export interface SyncTableResult {
   table: string
   displayName: string
   upserted: number
@@ -22,7 +24,7 @@ interface SyncTableResult {
   errors: string[]
 }
 
-interface FullSyncResult {
+export interface FullSyncResult {
   success: boolean
   started_at: string
   completed_at: string
@@ -30,6 +32,7 @@ interface FullSyncResult {
   total_upserted: number
   total_deleted: number
   total_errors: number
+  error?: string
 }
 
 async function fetchAllRecords(supabase: SupabaseClient, tableName: string): Promise<any[]> {
@@ -59,10 +62,14 @@ async function fetchAllRecords(supabase: SupabaseClient, tableName: string): Pro
   return allRecords
 }
 
-async function batchUpsert(supabase: SupabaseClient, tableName: string, records: any[]): Promise<{ count: number; errors: string[] }> {
+async function batchUpsert(
+  supabase: SupabaseClient,
+  tableName: string,
+  records: any[]
+): Promise<{ count: number; errors: string[] }> {
   if (records.length === 0) return { count: 0, errors: [] }
 
-  const batchSize = 500
+  const batchSize = 250
   let totalCount = 0
   const errors: string[] = []
 
@@ -82,10 +89,14 @@ async function batchUpsert(supabase: SupabaseClient, tableName: string, records:
   return { count: totalCount, errors }
 }
 
-async function batchDelete(supabase: SupabaseClient, tableName: string, ids: string[]): Promise<{ count: number; errors: string[] }> {
+async function batchDelete(
+  supabase: SupabaseClient,
+  tableName: string,
+  ids: string[]
+): Promise<{ count: number; errors: string[] }> {
   if (ids.length === 0) return { count: 0, errors: [] }
 
-  const batchSize = 500
+  const batchSize = 250
   let totalCount = 0
   const errors: string[] = []
 
@@ -113,13 +124,46 @@ export async function executeFullMirrorSync(
   const startedAt = new Date().toISOString()
   const tableResults: SyncTableResult[] = []
 
-  // Get cloud auth user IDs to sanitize auth-user FK fields
-  let cloudUserIds = new Set<string>()
+  // ── AUTH USER MAPPING ──────────────────────────────────────────────
+  // Fetch users from auth.admin on both sides to map local auth UUIDs to online auth UUIDs by email
+  let mapLocalUserToOnline = (localId: string | null): string | null => null
   try {
-    const { data: cloudUsers } = await onlineSupabase.from('users').select('id')
-    cloudUserIds = new Set((cloudUsers || []).map((u: any) => u.id))
-  } catch {
-    // If users table not accessible, we'll just null-ify all auth fields
+    const [{ data: localAuth }, { data: onlineAuth }] = await Promise.all([
+      localSupabase.auth.admin.listUsers({ perPage: 1000 }).catch(() => ({ data: null })),
+      onlineSupabase.auth.admin.listUsers({ perPage: 1000 }).catch(() => ({ data: null }))
+    ])
+
+    const localIdToEmail = new Map<string, string>()
+    if (localAuth?.users) {
+      for (const u of localAuth.users) {
+        if (u.id && u.email) localIdToEmail.set(u.id, u.email.toLowerCase())
+      }
+    }
+
+    const emailToOnlineId = new Map<string, string>()
+    const onlineUserIds = new Set<string>()
+    if (onlineAuth?.users) {
+      for (const u of onlineAuth.users) {
+        if (u.id) {
+          onlineUserIds.add(u.id)
+          if (u.email) emailToOnlineId.set(u.email.toLowerCase(), u.id)
+        }
+      }
+    }
+
+    mapLocalUserToOnline = (localId: string | null): string | null => {
+      if (!localId) return null
+      // Already valid in online?
+      if (onlineUserIds.has(localId)) return localId
+      // Match by email
+      const email = localIdToEmail.get(localId)
+      if (email && emailToOnlineId.has(email)) {
+        return emailToOnlineId.get(email)!
+      }
+      return null
+    }
+  } catch (err: any) {
+    console.warn('[FullSync] Could not build auth user map:', err.message)
   }
 
   // ── PHASE 1: UPSERTS (in FK-safe order, parents first) ──────────
@@ -136,35 +180,59 @@ export async function executeFullMirrorSync(
     }
 
     try {
-      // Fetch all local records (read-only from master)
-      const localRecords = await fetchAllRecords(localSupabase, config.table)
+      // 1. Check if table exists on online Supabase
+      const { error: testTableErr } = await onlineSupabase.from(config.table).select('id').limit(1)
+      if (testTableErr && (testTableErr.code === 'PGRST205' || testTableErr.message.includes('schema cache'))) {
+        result.skipped = 1
+        result.errors.push(`Table ${config.table} does not exist in Online Cloud database yet — skipping`)
+        tableResults.push(result)
+        continue
+      }
 
-      // Sanitize auth-user FK fields and strip generated columns
+      // 2. Fetch all local records (read-only from master)
+      const localRecords = await fetchAllRecords(localSupabase, config.table)
+      if (localRecords.length === 0) {
+        tableResults.push(result)
+        continue
+      }
+
+      // 3. Find valid columns on online target table
+      const firstRec = localRecords[0]
+      const validOnlineCols = new Set<string>()
+      const genCols = new Set(config.generatedColumns || [])
+
+      for (const col of Object.keys(firstRec)) {
+        if (genCols.has(col)) continue
+        const { error: colErr } = await onlineSupabase.from(config.table).select(col).limit(1)
+        if (!colErr) {
+          validOnlineCols.add(col)
+        }
+      }
+
+      // 4. Sanitize records
+      const authCols = new Set(config.authUserFields || [])
       const sanitizedRecords = localRecords.map(rec => {
-        const copy = { ...rec }
-        if (config.authUserFields) {
-          for (const field of config.authUserFields) {
-            if (copy[field] && !cloudUserIds.has(copy[field])) {
-              copy[field] = null
-            }
+        const clean: Record<string, any> = {}
+        for (const col of Object.keys(rec)) {
+          if (!validOnlineCols.has(col)) continue
+          if (genCols.has(col)) continue
+
+          let val = rec[col]
+          if (authCols.has(col)) {
+            val = mapLocalUserToOnline(val)
           }
+          clean[col] = val
         }
-        // Strip PostgreSQL GENERATED ALWAYS columns — DB computes these automatically
-        if (config.generatedColumns) {
-          for (const field of config.generatedColumns) {
-            delete copy[field]
-          }
-        }
-        return copy
+        return clean
       })
 
-      // Upsert all local records to online
+      // 5. Upsert sanitized records
       const upsertResult = await batchUpsert(onlineSupabase, config.table, sanitizedRecords)
       result.upserted = upsertResult.count
       result.errors.push(...upsertResult.errors)
 
     } catch (err: any) {
-      result.errors.push(`Upsert phase for ${config.table}: ${err.message}`)
+      result.errors.push(`Upsert error for ${config.table}: ${err.message}`)
     }
 
     tableResults.push(result)
@@ -175,12 +243,14 @@ export async function executeFullMirrorSync(
 
   for (const config of sortedForDelete) {
     const existingResult = tableResults.find(r => r.table === config.table)
-    if (!existingResult) continue
+    if (!existingResult || existingResult.skipped > 0) continue
 
     try {
       // Fetch IDs from both sides
-      const localRecords = await fetchAllRecords(localSupabase, config.table)
-      const onlineRecords = await fetchAllRecords(onlineSupabase, config.table)
+      const [localRecords, onlineRecords] = await Promise.all([
+        fetchAllRecords(localSupabase, config.table),
+        fetchAllRecords(onlineSupabase, config.table)
+      ])
 
       const localIdSet = new Set(localRecords.map(r => r.id))
       const orphanIds = onlineRecords
@@ -193,19 +263,26 @@ export async function executeFullMirrorSync(
         existingResult.errors.push(...deleteResult.errors)
       }
     } catch (err: any) {
-      existingResult.errors.push(`Delete phase for ${config.table}: ${err.message}`)
+      existingResult.errors.push(`Delete error for ${config.table}: ${err.message}`)
     }
   }
 
   const completedAt = new Date().toISOString()
+  const totalErrors = tableResults.reduce((s, r) => s + r.errors.length, 0)
 
   return {
-    success: tableResults.every(r => r.errors.length === 0),
+    success: totalErrors === 0,
     started_at: startedAt,
     completed_at: completedAt,
     table_results: tableResults,
     total_upserted: tableResults.reduce((s, r) => s + r.upserted, 0),
     total_deleted: tableResults.reduce((s, r) => s + r.deleted, 0),
-    total_errors: tableResults.reduce((s, r) => s + r.errors.length, 0)
+    total_errors: totalErrors,
+    error: totalErrors > 0
+      ? tableResults
+          .filter(r => r.errors.length > 0)
+          .map(r => `${r.displayName}: ${r.errors.join('; ')}`)
+          .join('\n')
+      : undefined
   }
 }

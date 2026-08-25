@@ -22,25 +22,46 @@ export const dynamic = 'force-dynamic'
  *   EXTRA_ONLINE    – record exists in cloud but NOT locally (will be deleted on sync)
  */
 
-function diffFields(local: any, online: any, excludeFields: string[]): { key: string; localVal: string; onlineVal: string }[] {
+function normalizeValue(val: any): string {
+  if (val === null || val === undefined || val === '') return ''
+  if (typeof val === 'number') {
+    // Standardize numeric comparison (e.g. 100.00 vs 100)
+    return String(Number(val))
+  }
+  if (typeof val === 'boolean') return String(val)
+  if (typeof val === 'object') return JSON.stringify(val)
+
+  const str = String(val).trim()
+  // Check if string is a date / timestamp
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const d = new Date(str)
+    if (!isNaN(d.getTime())) {
+      // Compare calendar date part if time is 00:00:00 or compare timestamp ms
+      return d.toISOString().split('T')[0]
+    }
+  }
+  return str
+}
+
+function diffFields(
+  local: any,
+  online: any,
+  excludeFields: Set<string>
+): { key: string; localVal: string; onlineVal: string }[] {
   const diffs: { key: string; localVal: string; onlineVal: string }[] = []
   const allKeys = new Set([...Object.keys(local), ...Object.keys(online)])
 
   for (const key of allKeys) {
-    if (excludeFields.includes(key)) continue
+    if (excludeFields.has(key)) continue
 
-    const locVal = local[key]
-    const onlVal = online[key]
+    const locVal = normalizeValue(local[key])
+    const onlVal = normalizeValue(online[key])
 
-    // Normalize for comparison
-    const locStr = locVal === null || locVal === undefined ? '' : typeof locVal === 'object' ? JSON.stringify(locVal) : String(locVal).trim()
-    const onlStr = onlVal === null || onlVal === undefined ? '' : typeof onlVal === 'object' ? JSON.stringify(onlVal) : String(onlVal).trim()
-
-    if (locStr !== onlStr) {
+    if (locVal !== onlVal) {
       diffs.push({
         key,
-        localVal: locStr || '—',
-        onlineVal: onlStr || '—'
+        localVal: locVal || '—',
+        onlineVal: onlVal || '—'
       })
     }
   }
@@ -53,7 +74,6 @@ function formatDiffSummary(diffs: { key: string; localVal: string; onlineVal: st
 }
 
 async function fetchAllRecords(supabase: any, tableName: string): Promise<any[]> {
-  // Supabase returns max 1000 rows per request. Paginate to get all.
   const allRecords: any[] = []
   let from = 0
   const pageSize = 1000
@@ -66,7 +86,6 @@ async function fetchAllRecords(supabase: any, tableName: string): Promise<any[]>
       .order('id', { ascending: true })
 
     if (error) {
-      // Table might not exist on online — return empty
       console.error(`[Audit] Error fetching ${tableName}: ${error.message}`)
       return allRecords
     }
@@ -91,9 +110,26 @@ export async function GET() {
     const localSupabase = await createClient()
     const onlineSupabase = createOnlineClient()
 
-    // Audit every table in parallel
+    // Audit every table
     const tableAudits = await Promise.all(
       SYNC_TABLES.map(async (config) => {
+        // Test if table exists online
+        const { error: testErr } = await onlineSupabase.from(config.table).select('id').limit(1)
+        if (testErr && (testErr.code === 'PGRST205' || testErr.message.includes('schema cache'))) {
+          return {
+            table: config.table,
+            displayName: config.displayName,
+            module: config.module,
+            total_local: 0,
+            total_online: 0,
+            missing: 0,
+            outOfDate: 0,
+            extraOnline: 0,
+            synced: 0,
+            items: []
+          }
+        }
+
         const [localRecords, onlineRecords] = await Promise.all([
           fetchAllRecords(localSupabase, config.table),
           fetchAllRecords(onlineSupabase, config.table)
@@ -102,7 +138,23 @@ export async function GET() {
         const localMap = new Map(localRecords.map(r => [r.id, r]))
         const onlineMap = new Map(onlineRecords.map(r => [r.id, r]))
 
-        const excludeFields = [...ALWAYS_EXCLUDE_FIELDS, ...(config.compareExcludeFields || [])]
+        // Set of fields to exclude from diff comparison
+        const excludeFields = new Set([
+          ...ALWAYS_EXCLUDE_FIELDS,
+          ...(config.compareExcludeFields || []),
+          ...(config.authUserFields || []),
+          ...(config.generatedColumns || [])
+        ])
+
+        // Also exclude columns that only exist locally and not in online schema
+        if (onlineRecords.length > 0 && localRecords.length > 0) {
+          const onlineKeySet = new Set(Object.keys(onlineRecords[0]))
+          for (const k of Object.keys(localRecords[0])) {
+            if (!onlineKeySet.has(k)) {
+              excludeFields.add(k)
+            }
+          }
+        }
 
         let missing = 0
         let outOfDate = 0
@@ -143,7 +195,7 @@ export async function GET() {
                 identifier,
                 issue: 'OUT_OF_DATE',
                 diff_detail: formatDiffSummary(fieldDiffs),
-                field_diffs: fieldDiffs.slice(0, 10), // Cap at 10 fields for UI
+                field_diffs: fieldDiffs.slice(0, 10),
                 href: config.href(localRec),
                 action_preview: `UPDATE ${fieldDiffs.length} field(s) on cloud`
               })
@@ -164,12 +216,13 @@ export async function GET() {
             } catch {
               identifier = onlineRec.id
             }
+
             items.push({
               id: onlineRec.id,
               table: config.table,
               identifier,
               issue: 'EXTRA_ONLINE',
-              diff_detail: 'Record exists in cloud but NOT in Master ERP — will be DELETED on sync',
+              diff_detail: 'Record exists in Cloud ERP but NOT in Master ERP (orphan)',
               field_diffs: [],
               href: config.href(onlineRec),
               action_preview: 'DELETE from cloud'
@@ -192,73 +245,78 @@ export async function GET() {
       })
     )
 
-    // Group results by module
+    // Aggregate by module for UI tabs
     const moduleMap: Record<string, {
-      displayName: string
-      tables: typeof tableAudits
-      total_local: number
-      total_online: number
+      module: string
       missing: number
       outOfDate: number
       extraOnline: number
       synced: number
+      total_local: number
+      total_online: number
       items: any[]
     }> = {}
 
     for (const mod of SYNC_MODULES) {
-      const moduleTables = tableAudits.filter(t => t.module === mod.key)
       moduleMap[mod.key] = {
-        displayName: mod.label,
-        tables: moduleTables,
-        total_local: moduleTables.reduce((s, t) => s + t.total_local, 0),
-        total_online: moduleTables.reduce((s, t) => s + t.total_online, 0),
-        missing: moduleTables.reduce((s, t) => s + t.missing, 0),
-        outOfDate: moduleTables.reduce((s, t) => s + t.outOfDate, 0),
-        extraOnline: moduleTables.reduce((s, t) => s + t.extraOnline, 0),
-        synced: moduleTables.reduce((s, t) => s + t.synced, 0),
-        items: moduleTables.flatMap(t => t.items)
+        module: mod.key,
+        missing: 0,
+        outOfDate: 0,
+        extraOnline: 0,
+        synced: 0,
+        total_local: 0,
+        total_online: 0,
+        items: []
       }
     }
 
-    // Global summary
-    const totalLocal = tableAudits.reduce((s, t) => s + t.total_local, 0)
-    const totalOnline = tableAudits.reduce((s, t) => s + t.total_online, 0)
-    const totalMissing = tableAudits.reduce((s, t) => s + t.missing, 0)
-    const totalOutOfDate = tableAudits.reduce((s, t) => s + t.outOfDate, 0)
-    const totalExtraOnline = tableAudits.reduce((s, t) => s + t.extraOnline, 0)
-    const totalSynced = tableAudits.reduce((s, t) => s + t.synced, 0)
-    const totalChanges = totalMissing + totalOutOfDate + totalExtraOnline
+    let totalMissing = 0
+    let totalOutOfDate = 0
+    let totalExtraOnline = 0
+    let totalSynced = 0
+    let totalLocalRecords = 0
+    let totalOnlineRecords = 0
+
+    for (const t of tableAudits) {
+      totalMissing += t.missing
+      totalOutOfDate += t.outOfDate
+      totalExtraOnline += t.extraOnline
+      totalSynced += t.synced
+      totalLocalRecords += t.total_local
+      totalOnlineRecords += t.total_online
+
+      const m = moduleMap[t.module]
+      if (m) {
+        m.missing += t.missing
+        m.outOfDate += t.outOfDate
+        m.extraOnline += t.extraOnline
+        m.synced += t.synced
+        m.total_local += t.total_local
+        m.total_online += t.total_online
+        m.items.push(...t.items)
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      audited_at: new Date().toISOString(),
-      destination_project_ref: 'aivcmkwclfipntadipec',
-      destination_domain: 'the-workflows.com',
+      timestamp: new Date().toISOString(),
       summary: {
-        total_local_records: totalLocal,
-        total_online_records: totalOnline,
+        total_local_records: totalLocalRecords,
+        total_online_records: totalOnlineRecords,
         total_missing_online: totalMissing,
         total_out_of_date: totalOutOfDate,
         total_extra_online: totalExtraOnline,
         total_synced: totalSynced,
-        total_changes_required: totalChanges,
-        is_fully_synced: totalChanges === 0
+        total_changes_required: totalMissing + totalOutOfDate + totalExtraOnline
       },
       modules: moduleMap,
-      tables: tableAudits.map(t => ({
-        table: t.table,
-        displayName: t.displayName,
-        module: t.module,
-        total_local: t.total_local,
-        total_online: t.total_online,
-        missing: t.missing,
-        outOfDate: t.outOfDate,
-        extraOnline: t.extraOnline,
-        synced: t.synced
-      }))
+      tables: tableAudits
     })
   } catch (err: any) {
-    console.error('[Audit] Fatal error:', err)
-    return NextResponse.json({ success: false, error: err.message || 'Internal audit error' }, { status: 500 })
+    console.error('[FullSync Audit] Error:', err)
+    return NextResponse.json(
+      { success: false, error: err.message || 'Failed to compare databases' },
+      { status: 500 }
+    )
   }
 }

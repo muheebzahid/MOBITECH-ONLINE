@@ -70,11 +70,11 @@ export default function AdminClient({ users }: Props) {
     try {
       const res = await fetch('/api/sync/admin/execute', { method: 'POST' })
       const data = await res.json()
-      if (!data.success) {
-        throw new Error(data.error || 'Sync execution failed')
-      }
       setSyncResult(data)
       setShowSyncConfirm(false)
+      if (!data.success && data.error) {
+        setSyncError(data.error)
+      }
       // Re-run audit to show updated state
       await handleRunAudit()
     } catch (err: any) {

@@ -144,6 +144,7 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     identifier: (r) => r.invoice_number || r.id,
     href: (r) => `/dashboard/sales/${r.id}`,
     fileUrlFields: ['pdf_url'],
+    authUserFields: ['created_by'],
   },
   {
     table: 'online_order_items',
@@ -179,6 +180,7 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     upsertOrder: 21,
     identifier: (r) => `$${Number(r.amount || 0).toLocaleString()}`,
     href: (r) => `/dashboard/sales/${r.invoice_id}`,
+    authUserFields: ['logged_by'],
   },
   {
     table: 'inventory_items',
