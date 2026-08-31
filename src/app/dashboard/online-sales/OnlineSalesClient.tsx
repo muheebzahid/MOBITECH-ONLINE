@@ -4,7 +4,16 @@ import { useState, useTransition, useRef } from 'react'
 import PaginationBar from '@/components/PaginationBar'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
-import { createOnlineOrder, bulkCreateOnlineOrders, bulkFulfillAndShipOrders, assignImeiToOrderItem, deleteOnlineOrder, bulkUpdateOnlineOrderStatus } from '@/lib/online-sales/actions'
+import { 
+  createOnlineOrder, 
+  bulkCreateOnlineOrders, 
+  bulkFulfillAndShipOrders, 
+  assignImeiToOrderItem, 
+  deleteOnlineOrder, 
+  bulkUpdateOnlineOrderStatus,
+  updateOnlineOrderSaleDate,
+  bulkUpdateOnlineOrderSaleDate
+} from '@/lib/online-sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import { exportToExcel } from '@/lib/utils/exportExcel'
 import { getAuditHistory } from '@/lib/audit/actions'
@@ -71,6 +80,12 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [showFulfillModal, setShowFulfillModal] = useState(false)
   const [bulkAssignments, setBulkAssignments] = useState<{orderId: string, orderNumber: string, orderItemId: string, skuDetails: string, needed: number, imeis: string[]}[]>([])
+  
+  // Date editing state
+  const [editingDateOrderId, setEditingDateOrderId] = useState<string | null>(null)
+  const [showBulkDateModal, setShowBulkDateModal] = useState(false)
+  const [bulkDateValue, setBulkDateValue] = useState(() => new Date().toISOString().split('T')[0])
+  const [savingDateId, setSavingDateId] = useState<string | null>(null)
 
   // Form State
   const [form, setForm] = useState({
@@ -369,6 +384,48 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
     }
   }
 
+  const handleUpdateSaleDate = async (orderId: string, newDate: string) => {
+    if (!newDate) return
+    setSavingDateId(orderId)
+    startTransition(async () => {
+      try {
+        const result = await updateOnlineOrderSaleDate(orderId, platform, newDate)
+        if (result.error) {
+          alert(`Failed to update sale date: ${result.error}`)
+        } else {
+          setEditingDateOrderId(null)
+          queryClient.invalidateQueries({ queryKey: ['online-orders', platform] })
+          router.refresh()
+        }
+      } catch (err: any) {
+        alert(`Error updating sale date: ${err.message}`)
+      } finally {
+        setSavingDateId(null)
+      }
+    })
+  }
+
+  const handleBulkUpdateSaleDate = async () => {
+    if (!bulkDateValue) return alert('Please choose a valid date')
+    if (selectedOrders.size === 0) return
+
+    startTransition(async () => {
+      try {
+        const result = await bulkUpdateOnlineOrderSaleDate(platform, Array.from(selectedOrders), bulkDateValue)
+        if (result.error) {
+          alert(`Failed to update sale dates: ${result.error}`)
+        } else {
+          setShowBulkDateModal(false)
+          setSelectedOrders(new Set())
+          queryClient.invalidateQueries({ queryKey: ['online-orders', platform] })
+          router.refresh()
+        }
+      } catch (err: any) {
+        alert(`Error updating sale dates: ${err.message}`)
+      }
+    })
+  }
+
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -489,6 +546,13 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
               </button>
               <button 
                 className="btn-ghost" 
+                onClick={() => setShowBulkDateModal(true)} 
+                style={{ border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+              >
+                📅 Change Date ({selectedOrders.size})
+              </button>
+              <button 
+                className="btn-ghost" 
                 onClick={handleBulkMarkDelivered} 
                 style={{ border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)' }}
               >
@@ -602,9 +666,58 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
                       {order.customer_email && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{order.customer_email}</div>}
                     </td>
                     <td>
-                      <div style={{ color: isOverdue ? 'var(--accent-red)' : 'inherit', fontWeight: isOverdue ? 'bold' : 'normal' }}>
-                        {fmtD(order.sale_date)}
-                      </div>
+                      {editingDateOrderId === order.id ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <input 
+                            type="date" 
+                            className="form-input" 
+                            style={{ padding: '2px 6px', fontSize: '12px', height: '28px', width: '135px' }}
+                            defaultValue={order.sale_date ? new Date(order.sale_date).toISOString().split('T')[0] : ''}
+                            autoFocus
+                            disabled={savingDateId === order.id}
+                            onChange={e => {
+                              if (e.target.value) {
+                                handleUpdateSaleDate(order.id, e.target.value)
+                              }
+                            }}
+                          />
+                          <button 
+                            type="button" 
+                            className="btn-ghost" 
+                            style={{ padding: '2px 4px', fontSize: '11px', color: 'var(--text-muted)' }}
+                            onClick={() => setEditingDateOrderId(null)}
+                            title="Cancel"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div 
+                          onClick={() => setEditingDateOrderId(order.id)}
+                          style={{ 
+                            cursor: 'pointer', 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '6px',
+                            padding: '3px 6px',
+                            borderRadius: '6px',
+                            border: '1px solid transparent',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
+                          title="Click to change sale date"
+                        >
+                          <div style={{ color: isOverdue ? 'var(--accent-red)' : 'inherit', fontWeight: isOverdue ? 'bold' : 'normal' }}>
+                            {fmtD(order.sale_date)}
+                          </div>
+                          {savingDateId === order.id ? (
+                            <span style={{ fontSize: '11px', color: 'var(--accent-purple)' }}>⏳</span>
+                          ) : (
+                            <span style={{ fontSize: '11px', opacity: 0.4 }}>✏️</span>
+                          )}
+                        </div>
+                      )}
                       {isOverdue && <div style={{ fontSize: '11px', color: 'var(--accent-red)', fontWeight: 'bold' }}>OVERDUE PAYOUT</div>}
                     </td>
                     <td>
@@ -854,6 +967,39 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Change Date Modal */}
+      {showBulkDateModal && (
+        <div className="modal-overlay" onClick={(e: any) => { if(e.target === e.currentTarget) setShowBulkDateModal(false) }}>
+          <div className="modal-box" style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Change Sale Date</h2>
+              <button className="modal-close" onClick={() => setShowBulkDateModal(false)}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+                Update the Sale Date for <strong>{selectedOrders.size}</strong> selected order(s):
+              </p>
+              <div className="form-group">
+                <label className="form-label">New Sale Date</label>
+                <input 
+                  type="date" 
+                  className="form-input" 
+                  value={bulkDateValue} 
+                  onChange={e => setBulkDateValue(e.target.value)} 
+                  required 
+                />
+              </div>
+              <div className="form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                <button type="button" className="btn-ghost" onClick={() => setShowBulkDateModal(false)}>Cancel</button>
+                <button type="button" className="btn-primary" onClick={handleBulkUpdateSaleDate} disabled={isPending}>
+                  {isPending ? 'Updating...' : `Apply to ${selectedOrders.size} Order(s)`}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

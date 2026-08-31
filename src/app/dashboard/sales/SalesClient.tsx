@@ -190,8 +190,8 @@ export default function SalesClient({ invoices, pendingInvoices = [], clients = 
           >
             <option value="all">All Time</option>
             {Array.from({ length: 24 }).map((_, i) => {
-              const d = new Date();
-              d.setMonth(d.getMonth() - i);
+              const now = new Date();
+              const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
               const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
               const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
               return <option key={val} value={val}>{label}</option>

@@ -484,3 +484,42 @@ export async function bulkUpdateOnlineOrderStatus(platform: 'AMAZON' | 'REVIBE',
   revalidatePath('/dashboard/inventory')
   return { success: true }
 }
+
+export async function updateOnlineOrderSaleDate(id: string, platform: string, saleDate: string) {
+  const supabase = await createClient()
+
+  const safeDate = saleDate ? new Date(saleDate).toISOString() : new Date().toISOString()
+  const { error } = await supabase
+    .from('online_orders')
+    .update({ sale_date: safeDate })
+    .eq('id', id)
+
+  if (error) {
+    console.error(`Error updating sale date for order ${id}:`, error.message)
+    return { error: error.message }
+  }
+
+  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${id}`)
+  return { success: true }
+}
+
+export async function bulkUpdateOnlineOrderSaleDate(platform: string, orderIds: string[], saleDate: string) {
+  const supabase = await createClient()
+
+  if (!orderIds || orderIds.length === 0) return { success: true, count: 0 }
+  const safeDate = saleDate ? new Date(saleDate).toISOString() : new Date().toISOString()
+
+  const { error } = await supabase
+    .from('online_orders')
+    .update({ sale_date: safeDate })
+    .in('id', orderIds)
+
+  if (error) {
+    console.error(`Error bulk updating sale dates:`, error.message)
+    return { error: error.message }
+  }
+
+  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+  return { success: true, count: orderIds.length }
+}

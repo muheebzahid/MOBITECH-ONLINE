@@ -297,8 +297,8 @@ export default function AccountingClient({
           >
             <option value="">All Months</option>
             {Array.from({ length: 24 }).map((_, i) => {
-              const d = new Date()
-              d.setMonth(d.getMonth() - i)
+              const now = new Date()
+              const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
               const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
               const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
               return <option key={val} value={val}>{label}</option>
