@@ -40,44 +40,41 @@ export async function logAudit({
   customRole?: string
 }) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    let email = customEmail || 'system@mobitech.com'
+    let role = customRole || 'USER'
+    let userId = null
 
-    let email = customEmail || user?.email || 'system@mobitech.com'
-    let role = customRole
-
-    if (!role && user) {
-      try {
-        const { getUserRole } = await import('@/lib/admin/actions')
-        const r = await getUserRole()
-        if (r) role = r
-      } catch (e) {
-        role = 'USER'
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        userId = user.id
+        if (!customEmail && user.email) email = user.email
+        if (!customRole) {
+          const { getUserRole } = await import('@/lib/admin/actions')
+          const r = await getUserRole()
+          if (r) role = r
+        }
       }
+    } catch (e) {
+      // Ignore auth lookup error safely
     }
-    if (!role) role = 'USER'
 
     const userMeta = { email, role }
-
     const finalOldData = oldData ? { _user: userMeta, ...oldData } : null
     const finalNewData = newData ? { _user: userMeta, ...newData } : null
 
     const adminClient = getAdminClient()
-
-    const { error } = await adminClient.from('audit_logs').insert([{
+    await adminClient.from('audit_logs').insert([{
       table_name: tableName,
       record_id: recordId || null,
       action: action,
-      user_id: user?.id || null,
+      user_id: userId,
       old_data: finalOldData,
       new_data: finalNewData
     }])
-
-    if (error) {
-      console.error('Failed to insert audit log:', error.message)
-    }
   } catch (err: any) {
-    console.error('Audit log exception swallowed safely:', err.message)
+    console.error('Audit log exception swallowed safely:', err?.message || err)
   }
 }
 

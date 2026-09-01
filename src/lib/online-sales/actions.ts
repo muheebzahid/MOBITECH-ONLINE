@@ -139,7 +139,10 @@ export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData:
       newData: { order_number: orderNumber, platform, total_amount: totalAmount, customer_name: customerName }
     })
 
-    revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+    try {
+      revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+    } catch (e) {}
+
     return { success: true, orderId: String(order.id) }
   } catch (err: any) {
     console.error('createOnlineOrder exception:', err)
