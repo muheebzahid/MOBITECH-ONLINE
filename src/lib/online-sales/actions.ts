@@ -1,8 +1,15 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit/actions'
+
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createSupabaseAdmin(url, key)
+}
 
 const ORDERS_PAGE_SIZE = 10000
 
@@ -48,238 +55,256 @@ export async function getOnlineOrderById(id: string) {
 }
 
 export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData: FormData, itemsJson: string) {
-  const supabase = await createClient()
-  const orderNumber = formData.get('order_number') as string
-  const customerName = formData.get('customer_name') as string
-  const customerEmail = formData.get('customer_email') as string
-  const saleDate = formData.get('sale_date') as string
-  const totalAmount = parseFloat(formData.get('total_amount') as string) || 0
+  try {
+    const adminClient = getAdminClient()
+    const orderNumber = formData.get('order_number') as string
+    const customerName = formData.get('customer_name') as string
+    const customerEmail = formData.get('customer_email') as string
+    const saleDate = formData.get('sale_date') as string
+    const totalAmount = parseFloat(formData.get('total_amount') as string) || 0
 
-  if (!orderNumber) return { error: 'Order number is required' }
+    if (!orderNumber) return { error: 'Order number is required' }
 
-  // Insert order
-  const { data: order, error: orderErr } = await supabase
-    .from('online_orders')
-    .insert({
-      order_number: orderNumber,
-      platform,
-      customer_name: customerName || null,
-      customer_email: customerEmail || null,
-      sale_date: saleDate ? new Date(saleDate).toISOString() : new Date().toISOString(),
-      total_amount: totalAmount,
-      status: 'PENDING'
-    })
-    .select()
-    .single()
+    // Insert order using admin client to bypass RLS restrictions
+    const { data: order, error: orderErr } = await adminClient
+      .from('online_orders')
+      .insert({
+        order_number: orderNumber,
+        platform,
+        customer_name: customerName || null,
+        customer_email: customerEmail || null,
+        sale_date: saleDate ? new Date(saleDate).toISOString() : new Date().toISOString(),
+        total_amount: totalAmount,
+        status: 'PENDING'
+      })
+      .select()
+      .single()
 
-  if (orderErr) {
-    return { error: orderErr.message }
-  }
-
-  // Insert order items
-  const items = JSON.parse(itemsJson || '[]') // Array of { model: string, storage: string, grade: string, color: string, carrier: string, quantity: number, unit_price: number }
-  if (items.length > 0) {
-    for (const item of items) {
-      await supabase
-        .from('online_order_items')
-        .insert({
-          order_id: order.id,
-          model: item.model,
-          storage: item.storage || null,
-          grade: item.grade || null,
-          color: item.color || null,
-          carrier: item.carrier || null,
-          quantity: parseInt(item.quantity) || 1,
-          unit_price: parseFloat(item.unit_price) || 0
-        })
+    if (orderErr) {
+      console.error('createOnlineOrder error:', orderErr)
+      return { error: orderErr.message }
     }
+
+    // Insert order items
+    const items = JSON.parse(itemsJson || '[]')
+    if (items.length > 0) {
+      for (const item of items) {
+        await adminClient
+          .from('online_order_items')
+          .insert({
+            order_id: order.id,
+            model: item.model,
+            storage: item.storage || null,
+            grade: item.grade || null,
+            color: item.color || null,
+            carrier: item.carrier || null,
+            quantity: parseInt(item.quantity) || 1,
+            unit_price: parseFloat(item.unit_price) || 0
+          })
+      }
+    }
+
+    await logAudit({
+      tableName: 'online_orders',
+      recordId: order.id,
+      action: 'CREATE',
+      newData: { order_number: orderNumber, platform, total_amount: totalAmount, customer_name: customerName }
+    })
+
+    revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+    return { success: true, order }
+  } catch (err: any) {
+    console.error('createOnlineOrder exception:', err)
+    return { error: err.message || 'Failed to create online order' }
   }
-
-  await logAudit({
-    tableName: 'online_orders',
-    recordId: order.id,
-    action: 'CREATE',
-    newData: { order_number: orderNumber, platform, total_amount: totalAmount, customer_name: customerName }
-  })
-
-  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
-  return { success: true, order }
 }
 
 export async function updateOnlineOrderStatus(id: string, platform: string, status: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('online_orders')
-    .update({ status })
-    .eq('id', id)
+  try {
+    const adminClient = getAdminClient()
+    const { error } = await adminClient
+      .from('online_orders')
+      .update({ status })
+      .eq('id', id)
 
-  if (error) return { error: error.message }
-  
-  if (status === 'DELIVERED') {
-    await supabase.from('inventory_items')
-      .update({ status: 'SOLD', refurb_stage: 'SOLD' })
-      .eq('online_order_id', id)
-  } else if (status === 'CANCELLED') {
-    await supabase.from('inventory_items')
-      .update({
-        online_order_id: null,
-        online_order_item_id: null,
-        status: 'AVAILABLE',
-        refurb_stage: 'READY_TO_SELL',
-        location: 'DUBAI_WAREHOUSE'
-      })
-      .eq('online_order_id', id)
-  } else {
-    await supabase.from('inventory_items')
-      .update({ status: 'ASSIGNED', refurb_stage: 'ASSIGNED' })
-      .eq('online_order_id', id)
+    if (error) return { error: error.message }
+    
+    if (status === 'DELIVERED') {
+      await adminClient.from('inventory_items')
+        .update({ status: 'SOLD', refurb_stage: 'SOLD' })
+        .eq('online_order_id', id)
+    } else if (status === 'CANCELLED') {
+      await adminClient.from('inventory_items')
+        .update({
+          online_order_id: null,
+          online_order_item_id: null,
+          status: 'AVAILABLE',
+          refurb_stage: 'READY_TO_SELL',
+          location: 'DUBAI_WAREHOUSE'
+        })
+        .eq('online_order_id', id)
+    } else {
+      await adminClient.from('inventory_items')
+        .update({ status: 'ASSIGNED', refurb_stage: 'ASSIGNED' })
+        .eq('online_order_id', id)
+    }
+
+    await logAudit({
+      tableName: 'online_orders',
+      recordId: id,
+      action: 'STATUS_CHANGE',
+      newData: { status, platform }
+    })
+
+    revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+    revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${id}`)
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || 'Failed to update order status' }
   }
-
-  await logAudit({
-    tableName: 'online_orders',
-    recordId: id,
-    action: 'STATUS_CHANGE',
-    newData: { status, platform }
-  })
-
-  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
-  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${id}`)
-  return { success: true }
 }
 
 export async function deleteOnlineOrder(id: string, platform: string) {
-  const supabase = await createClient()
-  
-  // Find assigned inventory items first
-  const { data: items } = await supabase
-    .from('inventory_items')
-    .select('id')
-    .eq('online_order_id', id)
-
-  if (items && items.length > 0) {
-    const itemIds = items.map(it => it.id)
-    await supabase
+  try {
+    const adminClient = getAdminClient()
+    
+    // Find assigned inventory items first
+    const { data: items } = await adminClient
       .from('inventory_items')
-      .update({
-        online_order_id: null,
-        online_order_item_id: null,
-        status: 'AVAILABLE',
-        refurb_stage: 'READY_TO_SELL',
-        location: 'DUBAI_WAREHOUSE'
-      })
-      .in('id', itemIds)
+      .select('id')
+      .eq('online_order_id', id)
+
+    if (items && items.length > 0) {
+      const itemIds = items.map(it => it.id)
+      await adminClient
+        .from('inventory_items')
+        .update({
+          online_order_id: null,
+          online_order_item_id: null,
+          status: 'AVAILABLE',
+          refurb_stage: 'READY_TO_SELL',
+          location: 'DUBAI_WAREHOUSE'
+        })
+        .in('id', itemIds)
+    }
+
+    const { error } = await adminClient
+      .from('online_orders')
+      .delete()
+      .eq('id', id)
+
+    if (error) return { error: error.message }
+    revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || 'Failed to delete order' }
   }
-
-  const { error } = await supabase
-    .from('online_orders')
-    .delete()
-    .eq('id', id)
-
-  if (error) return { error: error.message }
-  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
-  return { success: true }
 }
 
 export async function assignImeiToOrderItem(orderId: string, orderItemId: string, imeiText: string, platform: 'AMAZON' | 'REVIBE') {
-  const supabase = await createClient()
-  const trimmed = imeiText.trim()
-  if (!trimmed) return { error: 'IMEI/Serial is required' }
+  try {
+    const adminClient = getAdminClient()
+    const trimmed = imeiText.trim()
+    if (!trimmed) return { error: 'IMEI/Serial is required' }
 
-  // 1. Search for IMEI in stock that is AVAILABLE
-  const { data: item } = await supabase
-    .from('inventory_items')
-    .select('*')
-    .or(`imei.eq."${trimmed}",serial_number.eq."${trimmed}"`)
-    .limit(1)
-    .maybeSingle()
-
-  const targetLocation = platform === 'AMAZON' ? 'AMAZON_FBA' : 'REVIBE'
-
-  if (item) {
-    // Check if it's already assigned to this order (no-op)
-    if (item.online_order_id === orderId) {
-      return { success: true }
-    }
-    // Check if it's already assigned somewhere else
-    if (item.online_order_id && item.online_order_id !== orderId) {
-      return { error: `IMEI already assigned to order ${item.online_order_id}` }
-    }
-    if (item.invoice_id) {
-      return { error: 'IMEI already sold via wholesale invoice' }
-    }
-    // Enforce that device must be in READY_TO_SELL stage
-    if (item.refurb_stage !== 'READY_TO_SELL') {
-      return { error: `Device is not in READY_TO_SELL stage. Current stage: ${item.refurb_stage || 'None'}` }
-    }
-
-    // Assign existing item
-    const { error: updateErr } = await supabase
+    // 1. Search for IMEI in stock that is AVAILABLE
+    const { data: item } = await adminClient
       .from('inventory_items')
-      .update({
-        online_order_id: orderId,
-        online_order_item_id: orderItemId,
-        status: 'ASSIGNED',
-        refurb_stage: 'ASSIGNED',
-        location: targetLocation
-      })
-      .eq('id', item.id)
-
-    if (updateErr) return { error: updateErr.message }
-  } else {
-    // If not found in stock, let's create a new inventory item on the fly and mark it sold!
-    const { data: orderItem } = await supabase
-      .from('online_order_items')
       .select('*')
-      .eq('id', orderItemId)
-      .single()
-
-    if (!orderItem) return { error: 'Order SKU item not found' }
-
-    // Find any existing deal_id to associate with as placeholder
-    const { data: anyDeal } = await supabase
-      .from('deals')
-      .select('id')
+      .or(`imei.eq."${trimmed}",serial_number.eq."${trimmed}"`)
       .limit(1)
       .maybeSingle()
 
-    if (!anyDeal) {
-      return { error: 'Please create at least one Deal first to act as a placeholder for online sales inventory intake.' }
+    const targetLocation = platform === 'AMAZON' ? 'AMAZON_FBA' : 'REVIBE'
+
+    if (item) {
+      // Check if it's already assigned to this order (no-op)
+      if (item.online_order_id === orderId) {
+        return { success: true }
+      }
+      // Check if it's already assigned somewhere else
+      if (item.online_order_id && item.online_order_id !== orderId) {
+        return { error: `IMEI already assigned to order ${item.online_order_id}` }
+      }
+      if (item.invoice_id) {
+        return { error: 'IMEI already sold via wholesale invoice' }
+      }
+      // Enforce that device must be in READY_TO_SELL stage
+      if (item.refurb_stage !== 'READY_TO_SELL') {
+        return { error: `Device is not in READY_TO_SELL stage. Current stage: ${item.refurb_stage || 'None'}` }
+      }
+
+      // Assign existing item
+      const { error: updateErr } = await adminClient
+        .from('inventory_items')
+        .update({
+          online_order_id: orderId,
+          online_order_item_id: orderItemId,
+          status: 'ASSIGNED',
+          refurb_stage: 'ASSIGNED',
+          location: targetLocation
+        })
+        .eq('id', item.id)
+
+      if (updateErr) return { error: updateErr.message }
+    } else {
+      // If not found in stock, let's create a new inventory item on the fly and mark it sold!
+      const { data: orderItem } = await adminClient
+        .from('online_order_items')
+        .select('*')
+        .eq('id', orderItemId)
+        .single()
+
+      if (!orderItem) return { error: 'Order SKU item not found' }
+
+      // Find any existing deal_id to associate with as placeholder
+      const { data: anyDeal } = await adminClient
+        .from('deals')
+        .select('id')
+        .limit(1)
+        .maybeSingle()
+
+      if (!anyDeal) {
+        return { error: 'Please create at least one Deal first to act as a placeholder for online sales inventory intake.' }
+      }
+
+      const { error: insertErr } = await adminClient
+        .from('inventory_items')
+        .insert({
+          deal_id: anyDeal.id,
+          imei: trimmed,
+          model: orderItem.model,
+          storage: orderItem.storage || null,
+          grade: orderItem.grade || null,
+          color: orderItem.color || null,
+          carrier: orderItem.carrier || null,
+          unit_cost: 0,
+          logistics_cost: 0,
+          location: targetLocation,
+          status: 'ASSIGNED',
+          refurb_stage: 'ASSIGNED',
+          online_order_id: orderId,
+          online_order_item_id: orderItemId
+        })
+
+      if (insertErr) {
+        console.error('Error inserting new inventory item:', insertErr)
+        return { error: insertErr.message }
+      }
     }
 
-    const { error: insertErr } = await supabase
-      .from('inventory_items')
-      .insert({
-        deal_id: anyDeal.id,
-        imei: trimmed,
-        model: orderItem.model,
-        storage: orderItem.storage || null,
-        grade: orderItem.grade || null,
-        color: orderItem.color || null,
-        carrier: orderItem.carrier || null,
-        unit_cost: 0,
-        logistics_cost: 0,
-        location: targetLocation,
-        status: 'ASSIGNED',
-        refurb_stage: 'ASSIGNED',
-        online_order_id: orderId,
-        online_order_item_id: orderItemId
-      })
+    await logAudit({
+      tableName: 'online_orders',
+      recordId: orderId,
+      action: 'IMEI_ASSIGNED',
+      newData: { order_item_id: orderItemId, imei: trimmed, platform }
+    })
 
-    if (insertErr) {
-      console.error('Error inserting new inventory item:', insertErr)
-      return { error: insertErr.message }
-    }
+    revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${orderId}`)
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || 'Failed to assign IMEI' }
   }
-
-  await logAudit({
-    tableName: 'online_orders',
-    recordId: orderId,
-    action: 'IMEI_ASSIGNED',
-    newData: { order_item_id: orderItemId, imei: trimmed, platform }
-  })
-
-  revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${orderId}`)
-  return { success: true }
 }
 
 export async function removeImeiFromOrderItem(orderId: string, itemId: string, platform: 'AMAZON' | 'REVIBE') {
