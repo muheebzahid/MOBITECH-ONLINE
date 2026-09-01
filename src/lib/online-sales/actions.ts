@@ -5,26 +5,27 @@ import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit/actions'
 
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  return createSupabaseAdmin(url, key)
+async function getSupabase() {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return createSupabaseAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  }
+  return await createClient()
 }
 
 const ORDERS_PAGE_SIZE = 10000
 
 export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: number = 0) {
   try {
-    const adminClient = getAdminClient()
+    const supabase = await getSupabase()
     const from = page * ORDERS_PAGE_SIZE
     const to = from + ORDERS_PAGE_SIZE - 1
 
     const [{ count }, { data, error }] = await Promise.all([
-      adminClient
+      supabase
         .from('online_orders')
         .select('*', { count: 'exact', head: true })
         .eq('platform', platform),
-      adminClient
+      supabase
         .from('online_orders')
         .select('*, items:online_order_items(*, inventory_items(id, imei, serial_number)), inventory_items(id, imei, serial_number)')
         .eq('platform', platform)
@@ -45,8 +46,8 @@ export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: numbe
 
 export async function getOnlineOrderById(id: string) {
   try {
-    const adminClient = getAdminClient()
-    const { data, error } = await adminClient
+    const supabase = await getSupabase()
+    const { data, error } = await supabase
       .from('online_orders')
       .select('*, items:online_order_items(*, inventory_items(*)), inventory_items(*)')
       .eq('id', id)
@@ -65,8 +66,8 @@ export async function getOnlineOrderById(id: string) {
 
 export async function getReadyItems() {
   try {
-    const adminClient = getAdminClient()
-    const { data, error } = await adminClient
+    const supabase = await getSupabase()
+    const { data, error } = await supabase
       .from('inventory_items')
       .select('id, imei, serial_number, model, storage, grade')
       .eq('refurb_stage', 'READY_TO_SELL')
@@ -82,25 +83,58 @@ export async function getReadyItems() {
   }
 }
 
-export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData: FormData, itemsJson: string) {
+export async function createOnlineOrder(
+  platform: 'AMAZON' | 'REVIBE', 
+  orderDataOrFormData: any, 
+  itemsPayload?: any
+) {
   try {
-    const adminClient = getAdminClient()
-    const orderNumber = formData.get('order_number') as string
-    const customerName = formData.get('customer_name') as string
-    const customerEmail = formData.get('customer_email') as string
-    const saleDate = formData.get('sale_date') as string
-    const totalAmount = parseFloat(formData.get('total_amount') as string) || 0
+    const supabase = await getSupabase()
+    
+    let orderNumber = ''
+    let customerName: string | null = null
+    let customerEmail: string | null = null
+    let saleDate = ''
+    let totalAmount = 0
+    let itemsList: any[] = []
 
-    if (!orderNumber) return { error: 'Order number is required' }
+    if (typeof orderDataOrFormData?.get === 'function') {
+      // FormData input
+      orderNumber = (orderDataOrFormData.get('order_number') as string) || ''
+      customerName = (orderDataOrFormData.get('customer_name') as string) || null
+      customerEmail = (orderDataOrFormData.get('customer_email') as string) || null
+      saleDate = (orderDataOrFormData.get('sale_date') as string) || ''
+      totalAmount = parseFloat(orderDataOrFormData.get('total_amount') as string) || 0
+      if (typeof itemsPayload === 'string') {
+        try { itemsList = JSON.parse(itemsPayload || '[]') } catch (e) {}
+      } else if (Array.isArray(itemsPayload)) {
+        itemsList = itemsPayload
+      }
+    } else {
+      // Plain Object input
+      orderNumber = orderDataOrFormData?.order_number || ''
+      customerName = orderDataOrFormData?.customer_name || null
+      customerEmail = orderDataOrFormData?.customer_email || null
+      saleDate = orderDataOrFormData?.sale_date || ''
+      totalAmount = Number(orderDataOrFormData?.total_amount) || 0
+      if (Array.isArray(itemsPayload)) {
+        itemsList = itemsPayload
+      } else if (typeof itemsPayload === 'string') {
+        try { itemsList = JSON.parse(itemsPayload || '[]') } catch (e) {}
+      }
+    }
 
-    // Insert order using admin client to bypass RLS restrictions
-    const { data: order, error: orderErr } = await adminClient
+    if (!orderNumber || !orderNumber.trim()) {
+      return { error: 'Order number is required' }
+    }
+
+    const { data: order, error: orderErr } = await supabase
       .from('online_orders')
       .insert({
-        order_number: orderNumber,
+        order_number: orderNumber.trim(),
         platform,
-        customer_name: customerName || null,
-        customer_email: customerEmail || null,
+        customer_name: customerName?.trim() || null,
+        customer_email: customerEmail?.trim() || null,
         sale_date: saleDate ? new Date(saleDate).toISOString() : new Date().toISOString(),
         total_amount: totalAmount,
         status: 'PENDING'
@@ -114,21 +148,24 @@ export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData:
     }
 
     // Insert order items
-    const items = JSON.parse(itemsJson || '[]')
-    if (items.length > 0) {
-      for (const item of items) {
-        await adminClient
-          .from('online_order_items')
-          .insert({
-            order_id: order.id,
-            model: item.model,
-            storage: item.storage || null,
-            grade: item.grade || null,
-            color: item.color || null,
-            carrier: item.carrier || null,
-            quantity: parseInt(item.quantity) || 1,
-            unit_price: parseFloat(item.unit_price) || 0
-          })
+    if (itemsList && itemsList.length > 0) {
+      const lineItems = itemsList.map(item => ({
+        order_id: order.id,
+        model: item.model,
+        storage: item.storage || null,
+        grade: item.grade || null,
+        color: item.color || null,
+        carrier: item.carrier || null,
+        quantity: parseInt(String(item.quantity)) || 1,
+        unit_price: parseFloat(String(item.unit_price)) || 0
+      }))
+
+      const { error: itemsErr } = await supabase
+        .from('online_order_items')
+        .insert(lineItems)
+
+      if (itemsErr) {
+        console.error('createOnlineOrder items error:', itemsErr)
       }
     }
 
@@ -152,8 +189,8 @@ export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData:
 
 export async function updateOnlineOrderStatus(id: string, platform: string, status: string) {
   try {
-    const adminClient = getAdminClient()
-    const { error } = await adminClient
+    const supabase = await getSupabase()
+    const { error } = await supabase
       .from('online_orders')
       .update({ status })
       .eq('id', id)
@@ -161,11 +198,11 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
     if (error) return { error: error.message }
     
     if (status === 'DELIVERED') {
-      await adminClient.from('inventory_items')
+      await supabase.from('inventory_items')
         .update({ status: 'SOLD', refurb_stage: 'SOLD' })
         .eq('online_order_id', id)
     } else if (status === 'CANCELLED') {
-      await adminClient.from('inventory_items')
+      await supabase.from('inventory_items')
         .update({
           online_order_id: null,
           online_order_item_id: null,
@@ -175,7 +212,7 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
         })
         .eq('online_order_id', id)
     } else {
-      await adminClient.from('inventory_items')
+      await supabase.from('inventory_items')
         .update({ status: 'ASSIGNED', refurb_stage: 'ASSIGNED' })
         .eq('online_order_id', id)
     }
@@ -197,17 +234,17 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
 
 export async function deleteOnlineOrder(id: string, platform: string) {
   try {
-    const adminClient = getAdminClient()
+    const supabase = await getSupabase()
     
     // Find assigned inventory items first
-    const { data: items } = await adminClient
+    const { data: items } = await supabase
       .from('inventory_items')
       .select('id')
       .eq('online_order_id', id)
 
     if (items && items.length > 0) {
       const itemIds = items.map(it => it.id)
-      await adminClient
+      await supabase
         .from('inventory_items')
         .update({
           online_order_id: null,
@@ -219,7 +256,7 @@ export async function deleteOnlineOrder(id: string, platform: string) {
         .in('id', itemIds)
     }
 
-    const { error } = await adminClient
+    const { error } = await supabase
       .from('online_orders')
       .delete()
       .eq('id', id)
@@ -234,12 +271,12 @@ export async function deleteOnlineOrder(id: string, platform: string) {
 
 export async function assignImeiToOrderItem(orderId: string, orderItemId: string, imeiText: string, platform: 'AMAZON' | 'REVIBE') {
   try {
-    const adminClient = getAdminClient()
+    const supabase = await getSupabase()
     const trimmed = imeiText.trim()
     if (!trimmed) return { error: 'IMEI/Serial is required' }
 
     // 1. Search for IMEI in stock that is AVAILABLE
-    const { data: item } = await adminClient
+    const { data: item } = await supabase
       .from('inventory_items')
       .select('*')
       .or(`imei.eq."${trimmed}",serial_number.eq."${trimmed}"`)
@@ -266,7 +303,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
       }
 
       // Assign existing item
-      const { error: updateErr } = await adminClient
+      const { error: updateErr } = await supabase
         .from('inventory_items')
         .update({
           online_order_id: orderId,
@@ -280,7 +317,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
       if (updateErr) return { error: updateErr.message }
     } else {
       // If not found in stock, let's create a new inventory item on the fly and mark it sold!
-      const { data: orderItem } = await adminClient
+      const { data: orderItem } = await supabase
         .from('online_order_items')
         .select('*')
         .eq('id', orderItemId)
@@ -289,7 +326,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
       if (!orderItem) return { error: 'Order SKU item not found' }
 
       // Find any existing deal_id to associate with as placeholder
-      const { data: anyDeal } = await adminClient
+      const { data: anyDeal } = await supabase
         .from('deals')
         .select('id')
         .limit(1)
@@ -299,7 +336,7 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
         return { error: 'Please create at least one Deal first to act as a placeholder for online sales inventory intake.' }
       }
 
-      const { error: insertErr } = await adminClient
+      const { error: insertErr } = await supabase
         .from('inventory_items')
         .insert({
           deal_id: anyDeal.id,

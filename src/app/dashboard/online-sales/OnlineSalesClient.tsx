@@ -147,14 +147,15 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
         })
         const totalUsd = formattedSkus.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unit_price || 0)), 0)
 
-        const fd = new FormData()
-        fd.append('order_number', form.order_number)
-        fd.append('customer_name', form.customer_name)
-        fd.append('customer_email', form.customer_email)
-        fd.append('sale_date', form.sale_date)
-        fd.append('total_amount', totalUsd.toString())
+        const payload = {
+          order_number: form.order_number.trim(),
+          customer_name: form.customer_name.trim() || undefined,
+          customer_email: form.customer_email.trim() || undefined,
+          sale_date: form.sale_date,
+          total_amount: totalUsd
+        }
 
-        const res = await createOnlineOrder(platform, fd, JSON.stringify(formattedSkus))
+        const res = await createOnlineOrder(platform, payload, formattedSkus)
         if (res.error) {
           setError(res.error)
         } else {
