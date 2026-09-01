@@ -135,38 +135,43 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
 
     setError('')
     startTransition(async () => {
-      const isAed = orderCurrency === 'AED'
-      const formattedSkus = skus.map(s => {
-        const inputPrice = Number(s.unit_price) || 0
-        const usdPrice = isAed ? (inputPrice / 3.674) : inputPrice
-        return {
-          ...s,
-          unit_price: usdPrice
-        }
-      })
-      const totalUsd = formattedSkus.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unit_price || 0)), 0)
-
-      const fd = new FormData()
-      fd.append('order_number', form.order_number)
-      fd.append('customer_name', form.customer_name)
-      fd.append('customer_email', form.customer_email)
-      fd.append('sale_date', form.sale_date)
-      fd.append('total_amount', totalUsd.toString())
-
-      const res = await createOnlineOrder(platform, fd, JSON.stringify(formattedSkus))
-      if (res.error) {
-        setError(res.error)
-      } else {
-        setShowModal(false)
-        setForm({
-          order_number: '',
-          customer_name: '',
-          customer_email: '',
-          sale_date: new Date().toISOString().split('T')[0],
-          total_amount: '0'
+      try {
+        const isAed = orderCurrency === 'AED'
+        const formattedSkus = skus.map(s => {
+          const inputPrice = Number(s.unit_price) || 0
+          const usdPrice = isAed ? (inputPrice / 3.674) : inputPrice
+          return {
+            ...s,
+            unit_price: usdPrice
+          }
         })
-        setSkus([{ id: '', model: '', storage: '', grade: '', color: '', carrier: '', quantity: 1, unit_price: 0 }])
-        router.refresh()
+        const totalUsd = formattedSkus.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unit_price || 0)), 0)
+
+        const fd = new FormData()
+        fd.append('order_number', form.order_number)
+        fd.append('customer_name', form.customer_name)
+        fd.append('customer_email', form.customer_email)
+        fd.append('sale_date', form.sale_date)
+        fd.append('total_amount', totalUsd.toString())
+
+        const res = await createOnlineOrder(platform, fd, JSON.stringify(formattedSkus))
+        if (res.error) {
+          setError(res.error)
+        } else {
+          setShowModal(false)
+          setForm({
+            order_number: '',
+            customer_name: '',
+            customer_email: '',
+            sale_date: new Date().toISOString().split('T')[0],
+            total_amount: '0'
+          })
+          setSkus([{ id: '', model: '', storage: '', grade: '', color: '', carrier: '', quantity: 1, unit_price: 0 }])
+          queryClient.invalidateQueries({ queryKey: ['online-orders', platform] })
+          router.refresh()
+        }
+      } catch (err: any) {
+        setError(err.message || 'An unexpected error occurred while creating order')
       }
     })
   }

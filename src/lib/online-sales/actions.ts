@@ -14,44 +14,72 @@ function getAdminClient() {
 const ORDERS_PAGE_SIZE = 10000
 
 export async function getOnlineOrders(platform: 'AMAZON' | 'REVIBE', page: number = 0) {
-  const supabase = await createClient()
+  try {
+    const adminClient = getAdminClient()
+    const from = page * ORDERS_PAGE_SIZE
+    const to = from + ORDERS_PAGE_SIZE - 1
 
-  const from = page * ORDERS_PAGE_SIZE
-  const to = from + ORDERS_PAGE_SIZE - 1
+    const [{ count }, { data, error }] = await Promise.all([
+      adminClient
+        .from('online_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('platform', platform),
+      adminClient
+        .from('online_orders')
+        .select('*, items:online_order_items(*, inventory_items(id, imei, serial_number)), inventory_items(id, imei, serial_number)')
+        .eq('platform', platform)
+        .order('sale_date', { ascending: false })
+        .range(from, to)
+    ])
 
-  const [{ count }, { data, error }] = await Promise.all([
-    supabase
-      .from('online_orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('platform', platform),
-    supabase
-      .from('online_orders')
-      .select('*, items:online_order_items(*, inventory_items(id, imei, serial_number)), inventory_items(id, imei, serial_number)')
-      .eq('platform', platform)
-      .order('sale_date', { ascending: false })
-      .range(from, to)
-  ])
-
-  if (error) {
-    console.error('getOnlineOrders error:', error)
+    if (error) {
+      console.error('getOnlineOrders error:', error)
+      return { data: [], total: 0 }
+    }
+    return { data: data || [], total: count || 0 }
+  } catch (err: any) {
+    console.error('getOnlineOrders exception:', err)
     return { data: [], total: 0 }
   }
-  return { data: data || [], total: count || 0 }
 }
 
 export async function getOnlineOrderById(id: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('online_orders')
-    .select('*, items:online_order_items(*, inventory_items(*)), inventory_items(*)')
-    .eq('id', id)
-    .single()
+  try {
+    const adminClient = getAdminClient()
+    const { data, error } = await adminClient
+      .from('online_orders')
+      .select('*, items:online_order_items(*, inventory_items(*)), inventory_items(*)')
+      .eq('id', id)
+      .single()
 
-  if (error) {
-    console.error('getOnlineOrderById error:', error)
+    if (error) {
+      console.error('getOnlineOrderById error:', error)
+      return null
+    }
+    return data
+  } catch (err: any) {
+    console.error('getOnlineOrderById exception:', err)
     return null
   }
-  return data
+}
+
+export async function getReadyItems() {
+  try {
+    const adminClient = getAdminClient()
+    const { data, error } = await adminClient
+      .from('inventory_items')
+      .select('id, imei, serial_number, model, storage, grade')
+      .eq('refurb_stage', 'READY_TO_SELL')
+
+    if (error) {
+      console.error('getReadyItems error:', error)
+      return []
+    }
+    return data || []
+  } catch (err: any) {
+    console.error('getReadyItems exception:', err)
+    return []
+  }
 }
 
 export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData: FormData, itemsJson: string) {
