@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DashboardHomeClient from './DashboardHomeClient'
 import { getFinancialSummary } from '@/lib/accounting/actions'
+import { getUserRole } from '@/lib/admin/actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +12,14 @@ export default async function DashboardPage() {
 
   if (!user) {
     redirect('/login')
+  }
+
+  const role = await getUserRole()
+  if (role === 'LOGISTICS') {
+    redirect('/dashboard/logistics')
+  }
+  if (role === 'SALES') {
+    redirect('/dashboard/sales')
   }
 
   let settings = { amex_limit: 500000, cash_limit: 300000 }
