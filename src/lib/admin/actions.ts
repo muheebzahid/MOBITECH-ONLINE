@@ -5,27 +5,43 @@ import { revalidatePath } from 'next/cache'
 
 import { cache } from 'react'
 
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
+
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createSupabaseAdmin(url, key)
+}
+
 export const getUserRole = cache(async () => {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  
-  // Permanent override and auto-fix for approved Super Admin
-  if (user.email === 'muheebzahid@gmail.com') {
-    // Upsert to ensure the DB reflects SUPER_ADMIN so the dashboard reads it correctly
-    await supabase.from('user_roles')
-      .upsert({ user_id: user.id, email: user.email, role: 'SUPER_ADMIN' }, { onConflict: 'user_id' })
-    return 'SUPER_ADMIN'
-  }
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    
+    const adminClient = getAdminClient()
 
-  // Fetch role from DB
-  const { data: userRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single()
-  
-  if (userRole) {
-    return userRole.role as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
-  }
+    // Permanent override and auto-fix for approved Super Admin
+    if (user.email === 'muheebzahid@gmail.com') {
+      try {
+        await adminClient.from('user_roles')
+          .upsert({ user_id: user.id, email: user.email, role: 'SUPER_ADMIN' }, { onConflict: 'user_id' })
+      } catch (e) {}
+      return 'SUPER_ADMIN'
+    }
 
-  return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
+    // Fetch role from DB using admin client to bypass RLS restrictions
+    const { data: userRole } = await adminClient.from('user_roles').select('role').eq('user_id', user.id).maybeSingle()
+    
+    if (userRole?.role) {
+      return userRole.role as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
+    }
+
+    return 'DENIED' as 'SUPER_ADMIN' | 'SALES' | 'LOGISTICS' | 'FINANCE' | 'VIEW_ONLY' | 'DENIED'
+  } catch (err: any) {
+    console.error('getUserRole error:', err)
+    return 'DENIED' as const
+  }
 })
 
 export async function getAllUsers() {
