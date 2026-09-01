@@ -88,6 +88,7 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
   const [savingDateId, setSavingDateId] = useState<string | null>(null)
 
   // Form State
+  const [orderCurrency, setOrderCurrency] = useState<'AED' | 'USD'>('AED')
   const [form, setForm] = useState({
     order_number: '',
     customer_name: '',
@@ -134,14 +135,25 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
 
     setError('')
     startTransition(async () => {
+      const isAed = orderCurrency === 'AED'
+      const formattedSkus = skus.map(s => {
+        const inputPrice = Number(s.unit_price) || 0
+        const usdPrice = isAed ? (inputPrice / 3.674) : inputPrice
+        return {
+          ...s,
+          unit_price: usdPrice
+        }
+      })
+      const totalUsd = formattedSkus.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unit_price || 0)), 0)
+
       const fd = new FormData()
       fd.append('order_number', form.order_number)
       fd.append('customer_name', form.customer_name)
       fd.append('customer_email', form.customer_email)
       fd.append('sale_date', form.sale_date)
-      fd.append('total_amount', form.total_amount)
+      fd.append('total_amount', totalUsd.toString())
 
-      const res = await createOnlineOrder(platform, fd, JSON.stringify(skus))
+      const res = await createOnlineOrder(platform, fd, JSON.stringify(formattedSkus))
       if (res.error) {
         setError(res.error)
       } else {
@@ -834,12 +846,48 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
               </div>
 
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Order SKU Items</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Order SKU Items</h4>
+                    <div style={{ display: 'inline-flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                      <button
+                        type="button"
+                        onClick={() => setOrderCurrency('AED')}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          border: 'none',
+                          background: orderCurrency === 'AED' ? 'var(--accent-purple)' : 'transparent',
+                          color: orderCurrency === 'AED' ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🇦🇪 AED
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOrderCurrency('USD')}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          border: 'none',
+                          background: orderCurrency === 'USD' ? 'var(--accent-purple)' : 'transparent',
+                          color: orderCurrency === 'USD' ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🇺🇸 USD
+                      </button>
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>(1 USD = 3.674 AED)</span>
+                  </div>
                   <button type="button" className="btn-ghost" style={{ fontSize: '12px', border: '1px solid var(--border)', padding: '4px 8px' }} onClick={addSkuRow}>
                     + Add SKU Item
                   </button>
-                </div>                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto', paddingRight: '8px' }}>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto', paddingRight: '8px' }}>
                   {skus.map((sku, index) => (
                     <div key={index} style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)', position: 'relative' }}>
                       {skus.length > 1 && (
@@ -882,8 +930,26 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
                           <input type="number" className="form-input" required min="1" value={sku.quantity} onChange={e => updateSku(index, 'quantity', parseInt(e.target.value) || 1)} />
                         </div>
                         <div>
-                          <label className="form-label" style={{ fontSize: '12px' }}>Unit Price *</label>
-                          <input type="number" className="form-input" required min="0" step="0.01" value={sku.unit_price || ''} onChange={e => updateSku(index, 'unit_price', parseFloat(e.target.value) || 0)} />
+                          <label className="form-label" style={{ fontSize: '12px' }}>Unit Price * ({orderCurrency})</label>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            required 
+                            min="0" 
+                            step="0.01" 
+                            placeholder={orderCurrency === 'AED' ? 'e.g. 1723 AED' : 'e.g. 468.97 USD'}
+                            value={sku.unit_price || ''} 
+                            onChange={e => updateSku(index, 'unit_price', parseFloat(e.target.value) || 0)} 
+                          />
+                          {Number(sku.unit_price) > 0 && (
+                            <div style={{ fontSize: '11px', color: 'var(--accent-teal)', marginTop: '4px', fontWeight: 500 }}>
+                              {orderCurrency === 'AED' ? (
+                                <>≈ ${(Number(sku.unit_price) / 3.674).toFixed(3)} USD <span style={{ color: 'var(--text-muted)' }}>(1$ = 3.674 AED)</span></>
+                              ) : (
+                                <>≈ AED {(Number(sku.unit_price) * 3.674).toFixed(2)} <span style={{ color: 'var(--text-muted)' }}>(1$ = 3.674 AED)</span></>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -891,9 +957,24 @@ export default function OnlineSalesClient({ platform, initialOrders, readyItems,
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                <div style={{ fontSize: '15px', fontWeight: 600 }}>
-                  Total Amount: <span style={{ color: 'var(--accent-green)' }}>{fmt(Number(form.total_amount))}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                  Total Amount:{' '}
+                  {orderCurrency === 'AED' ? (
+                    <>
+                      <span style={{ color: 'var(--accent-green)' }}>AED {Number(form.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                        (≈ {fmt(Number(form.total_amount) / 3.674)} USD)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ color: 'var(--accent-green)' }}>{fmt(Number(form.total_amount))}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                        (≈ AED {(Number(form.total_amount) * 3.674).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="modal-footer" style={{ padding: 0 }}>
                   <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
