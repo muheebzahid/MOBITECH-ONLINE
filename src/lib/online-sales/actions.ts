@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { logAudit } from '@/lib/audit/actions'
 
 const ORDERS_PAGE_SIZE = 10000
 
@@ -94,6 +95,13 @@ export async function createOnlineOrder(platform: 'AMAZON' | 'REVIBE', formData:
     }
   }
 
+  await logAudit({
+    tableName: 'online_orders',
+    recordId: order.id,
+    action: 'CREATE',
+    newData: { order_number: orderNumber, platform, total_amount: totalAmount, customer_name: customerName }
+  })
+
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
   return { success: true, order }
 }
@@ -126,6 +134,13 @@ export async function updateOnlineOrderStatus(id: string, platform: string, stat
       .update({ status: 'ASSIGNED', refurb_stage: 'ASSIGNED' })
       .eq('online_order_id', id)
   }
+
+  await logAudit({
+    tableName: 'online_orders',
+    recordId: id,
+    action: 'STATUS_CHANGE',
+    newData: { status, platform }
+  })
 
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}`)
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${id}`)
@@ -255,6 +270,13 @@ export async function assignImeiToOrderItem(orderId: string, orderItemId: string
       return { error: insertErr.message }
     }
   }
+
+  await logAudit({
+    tableName: 'online_orders',
+    recordId: orderId,
+    action: 'IMEI_ASSIGNED',
+    newData: { order_item_id: orderItemId, imei: trimmed, platform }
+  })
 
   revalidatePath(`/dashboard/online-sales/${platform.toLowerCase()}/${orderId}`)
   return { success: true }

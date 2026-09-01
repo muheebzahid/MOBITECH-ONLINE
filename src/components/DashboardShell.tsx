@@ -6,6 +6,7 @@ import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { useRole } from '@/components/RoleProvider'
+import SalesNotificationBell from '@/components/notifications/SalesNotificationBell'
 
 
 
@@ -150,9 +151,14 @@ export default function DashboardShell({ user, children }: Props) {
         >
           <div className="user-avatar">{user.email?.charAt(0).toUpperCase()}</div>
           {isExpanded && (
-            <div className="user-info" style={{ marginRight: '24px' }}>
+            <div className="user-info" style={{ marginRight: '12px' }}>
               <span className="user-name">{user.email?.split('@')[0]}</span>
               <span className="user-role">{role.replace('_', ' ')}</span>
+            </div>
+          )}
+          {isExpanded && role !== 'SALES' && (
+            <div style={{ marginRight: '12px' }}>
+              <SalesNotificationBell />
             </div>
           )}
           {isExpanded && (
@@ -221,7 +227,8 @@ export default function DashboardShell({ user, children }: Props) {
             <span className="mobile-app-name">Mobitech ERP</span>
           </div>
 
-          <div className="mobile-user-badge">
+          <div className="mobile-user-badge" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {role !== 'SALES' && <SalesNotificationBell />}
             <span className="user-avatar-sm">{user.email?.charAt(0).toUpperCase()}</span>
           </div>
         </header>

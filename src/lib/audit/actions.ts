@@ -114,3 +114,31 @@ export async function getAuditHistory(tableName?: string, recordId?: string) {
     return []
   }
 }
+
+/**
+ * Retrieve notifications for Master ERP about changes/additions made by Sales role members.
+ */
+export async function getSalesMemberNotifications(limit: number = 50) {
+  try {
+    const adminClient = getAdminClient()
+    const { data, error } = await adminClient
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (error || !data) return []
+
+    // Filter audit logs performed by a user with role 'SALES' or containing SALES metadata
+    const salesNotifications = data.filter(item => {
+      const roleInNew = item.new_data?._user?.role
+      const roleInOld = item.old_data?._user?.role
+      return roleInNew === 'SALES' || roleInOld === 'SALES'
+    }).slice(0, limit)
+
+    return salesNotifications
+  } catch (err: any) {
+    console.error('getSalesMemberNotifications error:', err)
+    return []
+  }
+}

@@ -118,6 +118,14 @@ export async function createInvoice(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAudit({
+    tableName: 'invoices',
+    recordId: data.id,
+    action: 'CREATE',
+    newData: { customer_name: customerName, customer_email: customerEmail, created_by: user.id }
+  })
+
   revalidatePath('/dashboard/sales')
   revalidatePath('/dashboard/clients')
   return { success: true, invoice: data }
