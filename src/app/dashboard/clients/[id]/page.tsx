@@ -11,7 +11,7 @@ interface Props {
 
 export default async function ClientDetailPage({ params }: Props) {
   const role = await getUserRole()
-  if (role === 'LOGISTICS') redirect('/dashboard')
+  if (role === 'LOGISTICS' || role === 'SALES') redirect('/dashboard/sales')
 
   const { id } = await params
   const client = await getClientById(id)

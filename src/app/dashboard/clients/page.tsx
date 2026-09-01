@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function ClientsPage() {
   const role = await getUserRole()
-  if (role === 'LOGISTICS') redirect('/dashboard')
+  if (role === 'LOGISTICS' || role === 'SALES') redirect('/dashboard/sales')
 
   const clients = await getClients()
   return <ClientsClient clients={clients} />
