@@ -554,19 +554,236 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
           <button 
             className="btn-ghost" 
             onClick={() => {
-              const headers = ['Deal Number', 'Supplier', 'Auction Platform', 'Quantity', 'Total Commitment ($)', 'Status', 'Funding Source', 'AMEX Statement Date', 'Created Date']
-              const rows = filtered.map(d => [
-                d.deal_number,
-                d.supplier || '',
-                d.auction_platform || '',
-                d.quantity || 0,
-                d.total_commitment || 0,
-                (DEAL_STATUSES as any)[d.status]?.label || d.status,
-                d.funding_source || '',
-                d.amex_statement_date || '',
-                new Date(d.created_at).toLocaleDateString()
+              const summaryHeaders = [
+                'Deal #',
+                'Status',
+                'Supplier',
+                'Auction Platform',
+                'Model Summary',
+                'Storage',
+                'Grade',
+                'Color',
+                'Carrier',
+                'Total Purchased Qty',
+                'Invoiced Qty Sold',
+                'Remaining Units',
+                'Sell-Through %',
+                'Total Commitment ($)',
+                'Base Unit Cost ($)',
+                'Linked Shipment #',
+                'Total Shipment Cost ($)',
+                'Shipment Cost Per Unit ($)',
+                'Total Landed Cost ($)',
+                'Landed Cost Per Unit ($)',
+                'Invoiced Revenue ($)',
+                'Total COGS ($)',
+                'Live Gross Profit ($)',
+                'Gross Profit Margin %',
+                'Stuck Capital ($)',
+                'Amex Cash Back Profit ($)',
+                'Net Profit ($)',
+                'Funding Source',
+                'Amex Amount ($)',
+                'Turbo Cash Amount ($)',
+                'SB Cash Amount ($)',
+                'AMEX Statement Date',
+                'AMEX Paid Date',
+                'Payment Date',
+                'Ready For Pickup Date',
+                'Arrived Miami / SB Tech Date',
+                'In Transit Dubai Date',
+                'Received Mobitech Date',
+                'First Partial Sold Date',
+                'Deal Closed Date',
+                'Days Active',
+                'Live Cloud Synced At',
+                'Created Date',
+                'Notes'
+              ]
+
+              const summaryRows = filtered.map(d => {
+                const stLabel = (DEAL_STATUSES as any)[d.status]?.label || d.status
+                const invoicedQty = (d as any).invoice_line_items ? (d as any).invoice_line_items.filter((i:any) => i.invoices?.status !== 'CANCELLED' && i.invoices?.status !== 'VOIDED').reduce((sum:number, i:any) => sum + (i.quantity || 0), 0) : 0
+                const validLineItems = (d as any).invoice_line_items ? (d as any).invoice_line_items.filter((i:any) => i.invoices && i.invoices.status !== 'CANCELLED' && i.invoices.status !== 'VOIDED') : []
+                const invoicedValue = validLineItems.reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.unit_price || 0)), 0)
+                const remainingQty = Math.max(0, d.quantity - invoicedQty)
+                const baseUnitCost = d.quantity > 0 ? (d.total_commitment / d.quantity) : 0
+                const stuckCapital = d.quantity > 0 ? remainingQty * baseUnitCost : 0
+
+                let partialSoldDate = ''
+                if (validLineItems.length > 0) {
+                  const sortedInvoices = [...validLineItems]
+                    .map(i => i.invoices?.issue_date ? new Date(i.invoices.issue_date).getTime() : Infinity)
+                    .filter(t => t !== Infinity)
+                    .sort((a, b) => a - b)
+                  if (sortedInvoices.length > 0) {
+                    partialSoldDate = new Date(sortedInvoices[0]).toLocaleDateString()
+                  }
+                }
+
+                let shipmentUnitCost = 0
+                let dealShipmentCost = 0
+                const shipmentData = (d as any).shipment_deals?.[0]?.shipments
+                const shipmentNumbers = (d as any).shipment_deals?.map((sd: any) => sd.shipments?.shipment_number).filter(Boolean).join(', ') || ''
+                if (shipmentData) {
+                  const totalShipmentCost = Number(shipmentData.total_logistics_cost) || 0
+                  const totalShipmentUnits = shipmentData.shipment_deals?.reduce((sum: number, sd: any) => sum + (Number(sd.deals?.quantity) || 0), 0) || 0
+                  if (totalShipmentUnits > 0) {
+                    shipmentUnitCost = totalShipmentCost / totalShipmentUnits
+                    dealShipmentCost = shipmentUnitCost * d.quantity
+                  }
+                }
+
+                const totalLandedCost = d.total_commitment + dealShipmentCost
+                const landedUnitCost = d.quantity > 0 ? (totalLandedCost / d.quantity) : 0
+                const totalCogs = invoicedQty * (baseUnitCost + shipmentUnitCost)
+                const liveGrossProfit = invoicedValue - d.total_commitment - dealShipmentCost
+                const grossMarginPct = invoicedValue > 0 ? ((liveGrossProfit / invoicedValue) * 100) : 0
+
+                let amexProfit = 0
+                if (d.funding_source === 'AMEX' || d.funding_source === 'MIXED') {
+                  const amexProfitMultiplier = d.funding_source === 'AMEX' ? 1 : ((Number(d.amex_amount) || 0) / d.total_commitment)
+                  const paidQty = validLineItems.filter((i:any) => i.invoices?.status === 'PAID').reduce((sum: number, i: any) => sum + (i.quantity || 0), 0)
+                  amexProfit = paidQty * baseUnitCost * amexProfitMultiplier * 0.02
+                }
+
+                const netProfit = liveGrossProfit + amexProfit
+                const sellThroughPct = d.quantity > 0 ? ((invoicedQty / d.quantity) * 100) : 0
+
+                const modelSummary = (d.items && d.items.length > 1) 
+                  ? d.items.map((it: any) => `${it.model} (${it.quantity})`).join(', ') 
+                  : (d.model || '')
+
+                const singleItem = (d.items && d.items.length === 1) ? d.items[0] : null
+                const storageStr = singleItem?.storage || d.storage || ''
+                const gradeStr = singleItem?.grade || d.grade || ''
+                const colorStr = singleItem?.color || d.color || ''
+                const carrierStr = singleItem?.carrier || d.carrier || ''
+
+                const fundingLabel = d.funding_source === 'AMEX' ? 'Amex' : d.funding_source === 'TURBO_CASH' ? 'Turbo Cash' : d.funding_source === 'SB_CASH' ? 'SB Cash' : d.funding_source === 'MIXED' ? 'Mixed' : (d.funding_source || '')
+
+                const daysActive = Math.floor((Date.now() - new Date(d.created_at).getTime()) / 86400000)
+
+                return [
+                  d.deal_number,
+                  stLabel,
+                  d.supplier || '',
+                  d.auction_platform || '',
+                  modelSummary,
+                  storageStr,
+                  gradeStr,
+                  colorStr,
+                  carrierStr,
+                  d.quantity || 0,
+                  invoicedQty,
+                  remainingQty,
+                  Number(sellThroughPct.toFixed(1)),
+                  Number((d.total_commitment || 0).toFixed(2)),
+                  Number(baseUnitCost.toFixed(2)),
+                  shipmentNumbers,
+                  Number(dealShipmentCost.toFixed(2)),
+                  Number(shipmentUnitCost.toFixed(2)),
+                  Number(totalLandedCost.toFixed(2)),
+                  Number(landedUnitCost.toFixed(2)),
+                  Number(invoicedValue.toFixed(2)),
+                  Number(totalCogs.toFixed(2)),
+                  Number(liveGrossProfit.toFixed(2)),
+                  Number(grossMarginPct.toFixed(2)),
+                  Number(stuckCapital.toFixed(2)),
+                  Number(amexProfit.toFixed(2)),
+                  Number(netProfit.toFixed(2)),
+                  fundingLabel,
+                  Number((d.amex_amount || 0).toFixed(2)),
+                  Number((d.turbo_amount || 0).toFixed(2)),
+                  Number((d.sb_amount || 0).toFixed(2)),
+                  d.amex_statement_date ? new Date(d.amex_statement_date).toLocaleDateString() : '',
+                  d.amex_paid_date ? new Date(d.amex_paid_date).toLocaleDateString() : '',
+                  d.payment_date ? new Date(d.payment_date).toLocaleDateString() : '',
+                  d.ready_for_pickup_date ? new Date(d.ready_for_pickup_date).toLocaleDateString() : '',
+                  d.arrived_miami_date ? new Date(d.arrived_miami_date).toLocaleDateString() : '',
+                  d.in_transit_dubai_date ? new Date(d.in_transit_dubai_date).toLocaleDateString() : '',
+                  d.received_mobitech_date ? new Date(d.received_mobitech_date).toLocaleDateString() : '',
+                  partialSoldDate || '',
+                  d.deal_closed_date ? new Date(d.deal_closed_date).toLocaleDateString() : '',
+                  daysActive,
+                  (d as any).synced_to_online_at ? new Date((d as any).synced_to_online_at).toLocaleString() : '',
+                  new Date(d.created_at).toLocaleString(),
+                  d.notes || ''
+                ]
+              })
+
+              // Sheet 2: Itemized Line Items & SKUs Breakdown
+              const itemHeaders = [
+                'Deal #',
+                'Supplier',
+                'Deal Status',
+                'Model',
+                'Storage',
+                'Grade',
+                'Color',
+                'Carrier',
+                'Quantity',
+                'Unit Cost ($)',
+                'Total Cost ($)',
+                'Repair Cost ($)',
+                'Linked Shipment #',
+                'Deal Created Date'
+              ]
+
+              const itemRows: (string | number | boolean | null | undefined)[][] = []
+              for (const d of filtered) {
+                const stLabel = (DEAL_STATUSES as any)[d.status]?.label || d.status
+                const shipmentNumbers = (d as any).shipment_deals?.map((sd: any) => sd.shipments?.shipment_number).filter(Boolean).join(', ') || ''
+                const dealCreated = new Date(d.created_at).toLocaleDateString()
+                
+                if (d.items && d.items.length > 0) {
+                  for (const it of d.items) {
+                    const itQty = Number(it.quantity) || 0
+                    const itCost = Number(it.unit_cost) || 0
+                    const itTotal = Number((itQty * itCost).toFixed(2))
+                    itemRows.push([
+                      d.deal_number,
+                      d.supplier || '',
+                      stLabel,
+                      it.model || '',
+                      it.storage || '',
+                      it.grade || '',
+                      it.color || '',
+                      it.carrier || '',
+                      itQty,
+                      itCost,
+                      itTotal,
+                      Number(it.repair_cost || 0),
+                      shipmentNumbers,
+                      dealCreated
+                    ])
+                  }
+                } else {
+                  const itQty = Number(d.quantity) || 0
+                  const itCost = itQty > 0 ? Number((d.total_commitment / itQty).toFixed(2)) : 0
+                  itemRows.push([
+                    d.deal_number,
+                    d.supplier || '',
+                    stLabel,
+                    d.model || '',
+                    d.storage || '',
+                    d.grade || '',
+                    d.color || '',
+                    d.carrier || '',
+                    itQty,
+                    itCost,
+                    Number((d.total_commitment || 0).toFixed(2)),
+                    0,
+                    shipmentNumbers,
+                    dealCreated
+                  ])
+                }
+              }
+
+              exportToExcel('mobitech_deals_full_export', [
+                { name: 'Deals Summary & Financials', headers: summaryHeaders, rows: summaryRows },
+                { name: 'Itemized SKUs Breakdown', headers: itemHeaders, rows: itemRows }
               ])
-              exportToExcel('mobitech_deals_export', headers, rows)
             }} 
             style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
           >
