@@ -183,6 +183,16 @@ export const SYNC_TABLES: SyncTableConfig[] = [
     authUserFields: ['logged_by'],
   },
   {
+    table: 'invoice_documents',
+    displayName: 'Invoice Documents',
+    module: 'invoices',
+    upsertOrder: 23,
+    identifier: (r) => r.name || r.id,
+    href: (r) => `/dashboard/sales/${r.invoice_id}`,
+    fileUrlFields: ['file_url'],
+    authUserFields: ['uploaded_by'],
+  },
+  {
     table: 'inventory_items',
     displayName: 'Inventory Items',
     module: 'inventory',

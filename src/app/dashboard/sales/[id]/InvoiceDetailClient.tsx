@@ -3,7 +3,21 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { INVOICE_STATUSES, PAYMENT_METHODS, type InvoiceStatus } from '@/lib/sales/constants'
-import { addLineItem, removeLineItem, recordPayment, deletePayment, issueInvoice, deleteInvoice, uploadInvoiceDocument, removeInvoiceDocument, updateLineItemDeal, updateInvoiceStatus, updateInvoiceBilledTo, updateInvoiceNumber } from '@/lib/sales/actions'
+import { 
+  addLineItem, 
+  removeLineItem, 
+  recordPayment, 
+  deletePayment, 
+  issueInvoice, 
+  deleteInvoice, 
+  uploadInvoiceDocument, 
+  deleteInvoiceDocument,
+  removeInvoiceDocument, 
+  updateLineItemDeal, 
+  updateInvoiceStatus, 
+  updateInvoiceBilledTo, 
+  updateInvoiceNumber 
+} from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
 
@@ -188,13 +202,18 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
     })
   }
 
-  const uploadFile = async (file: File) => {
+  const uploadFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return
     setIsUploadingPdf(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await uploadInvoiceDocument(invoice.id, fd)
-      if (res.error) alert(res.error)
+      for (const file of Array.from(files)) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await uploadInvoiceDocument(invoice.id, fd)
+        if (res.error) {
+          alert(`Upload failed for ${file.name}: ${res.error}`)
+        }
+      }
     } catch (err: any) {
       alert(err.message)
     } finally {
@@ -203,25 +222,30 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   }
 
   const handleUploadPdf = async (e: any) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    await uploadFile(file)
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    await uploadFiles(files)
+    e.target.value = ''
   }
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setIsDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (!file) return
-    await uploadFile(file)
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+    await uploadFiles(files)
   }
 
-  const handleRemovePdf = async () => {
-    if (!invoice.pdf_url) return
-    if (!window.confirm('Remove attached document?')) return
+  const handleDeleteDocument = async (docId: string, fileUrl: string) => {
+    if (!window.confirm('Are you sure you want to remove this attachment?')) return
     startTransition(async () => {
-      const res = await removeInvoiceDocument(invoice.id, invoice.pdf_url)
-      if (res.error) alert(res.error)
+      if (docId === 'legacy-doc') {
+        const res = await removeInvoiceDocument(invoice.id, fileUrl)
+        if (res.error) alert(res.error)
+      } else {
+        const res = await deleteInvoiceDocument(docId, fileUrl, invoice.id)
+        if (res.error) alert(res.error)
+      }
     })
   }
 
@@ -655,45 +679,181 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
             </div>
           )}
 
-          <div className="no-print" style={{ marginTop: '32px', padding: '16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>Attachment</h3>
-            {invoice.pdf_url ? (
-               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                 <a href={invoice.pdf_url} target="_blank" rel="noreferrer" className="btn-primary" style={{ padding: '8px 16px', fontSize: '12px' }}>View Attachment</a>
-                 {role === 'SUPER_ADMIN' && (
-                   <button className="btn-ghost" style={{ color: 'var(--accent-red)', padding: '8px 16px', fontSize: '12px' }} onClick={handleRemovePdf}>Remove</button>
-                 )}
-               </div>
-            ) : role === 'VIEW_ONLY' ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                No document attached.
+          {/* Multiple Attachments Section */}
+          <div className="no-print" style={{ marginTop: '32px', padding: '20px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                  Attachments {(() => {
+                    const count = (invoice.invoice_documents?.length || 0) + (invoice.pdf_url && !invoice.invoice_documents?.some((d: any) => d.file_url === invoice.pdf_url) ? 1 : 0)
+                    return count > 0 ? `(${count})` : ''
+                  })()}
+                </h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Attach invoices, signed receipts, delivery notes, and documentation
+                </span>
               </div>
-            ) : (
-               <div
-                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                 onDragLeave={() => setIsDragging(false)}
-                 onDrop={handleDrop}
-                 style={{
-                   border: isDragging ? '2px dashed var(--accent-indigo)' : '1px dashed var(--border-subtle)',
-                   borderRadius: 'var(--radius-sm)',
-                   padding: '24px 16px',
-                   textAlign: 'center',
-                   backgroundColor: isDragging ? 'rgba(99,102,241,0.06)' : 'transparent',
-                   transition: 'all var(--transition)',
-                   cursor: 'pointer'
-                 }}
-               >
-                 <input type="file" id="pdf-upload" style={{ display: 'none' }} onChange={handleUploadPdf} />
-                 <label htmlFor="pdf-upload" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                   <span style={{ fontSize: '24px' }}>{isUploadingPdf ? '⏳' : '📥'}</span>
-                   <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                     {isUploadingPdf ? 'Uploading...' : 'Drag & drop file here, or click to browse'}
-                   </span>
-                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                     Supports any file format
-                   </span>
-                 </label>
-               </div>
+              {role !== 'VIEW_ONLY' && (
+                <div>
+                  <input 
+                    type="file" 
+                    id="pdf-upload-btn" 
+                    multiple 
+                    style={{ display: 'none' }} 
+                    onChange={handleUploadPdf} 
+                  />
+                  <label 
+                    htmlFor="pdf-upload-btn" 
+                    className="btn-primary" 
+                    style={{ padding: '6px 14px', fontSize: '12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    {isUploadingPdf ? '⏳ Uploading...' : '+ Add Attachment'}
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Document list */}
+            {(() => {
+              const docs: Array<{ id: string; name: string; file_url: string; file_size?: number; created_at?: string }> = []
+              const seen = new Set<string>()
+
+              if (invoice.invoice_documents && invoice.invoice_documents.length > 0) {
+                for (const doc of invoice.invoice_documents) {
+                  if (doc.file_url && !seen.has(doc.file_url)) {
+                    seen.add(doc.file_url)
+                    docs.push(doc)
+                  }
+                }
+              }
+
+              if (invoice.pdf_url && !seen.has(invoice.pdf_url)) {
+                seen.add(invoice.pdf_url)
+                docs.push({
+                  id: 'legacy-doc',
+                  name: invoice.pdf_url.split('/').pop()?.split('?')[0] || 'Attached Document',
+                  file_url: invoice.pdf_url,
+                  created_at: invoice.created_at
+                })
+              }
+
+              if (docs.length === 0) {
+                if (role === 'VIEW_ONLY') {
+                  return (
+                    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                      No documents attached.
+                    </div>
+                  )
+                }
+                return null
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: role !== 'VIEW_ONLY' ? '16px' : 0 }}>
+                  {docs.map((doc, idx) => {
+                    const isImg = doc.file_url.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i)
+                    const fName = doc.name || doc.file_url.split('/').pop()?.split('?')[0] || `Attachment ${idx + 1}`
+                    const sizeStr = doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''
+                    const dateStr = doc.created_at ? fmtD(doc.created_at) : ''
+
+                    return (
+                      <div 
+                        key={doc.id || idx} 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between', 
+                          padding: '10px 14px', 
+                          background: 'var(--bg-card)', 
+                          border: '1px solid var(--border-subtle)', 
+                          borderRadius: 'var(--radius-sm)',
+                          gap: '12px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                          <span style={{ fontSize: '18px' }}>{isImg ? '🖼️' : '📄'}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                            <a 
+                              href={doc.file_url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              style={{ 
+                                fontSize: '13px', 
+                                fontWeight: 600, 
+                                color: 'var(--accent-indigo)', 
+                                textDecoration: 'none',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '450px'
+                              }}
+                              title={fName}
+                            >
+                              {fName}
+                            </a>
+                            {(sizeStr || dateStr) && (
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {[sizeStr, dateStr].filter(Boolean).join(' • ')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                          <a 
+                            href={doc.file_url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="btn-ghost" 
+                            style={{ padding: '4px 10px', fontSize: '11px', border: '1px solid var(--border)' }}
+                          >
+                            View
+                          </a>
+                          {role !== 'VIEW_ONLY' && (
+                            <button 
+                              className="btn-ghost" 
+                              style={{ color: 'var(--accent-red)', padding: '4px 10px', fontSize: '11px', border: '1px solid var(--border-subtle)' }} 
+                              onClick={() => handleDeleteDocument(doc.id, doc.file_url)}
+                              title="Remove attachment"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+
+            {/* Drag & Drop Multi-file Upload Box */}
+            {role !== 'VIEW_ONLY' && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                style={{
+                  border: isDragging ? '2px dashed var(--accent-indigo)' : '1px dashed var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '20px 16px',
+                  textAlign: 'center',
+                  backgroundColor: isDragging ? 'rgba(99,102,241,0.06)' : 'transparent',
+                  transition: 'all var(--transition)',
+                  cursor: 'pointer'
+                }}
+              >
+                <input type="file" id="pdf-upload-drop" multiple style={{ display: 'none' }} onChange={handleUploadPdf} />
+                <label htmlFor="pdf-upload-drop" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '20px' }}>{isUploadingPdf ? '⏳' : '📥'}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                    {isUploadingPdf ? 'Uploading attachments...' : 'Drag & drop multiple files here, or click to browse'}
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Supports PDF, images, receipts, and any other file formats
+                  </span>
+                </label>
+              </div>
             )}
           </div>
         </div>

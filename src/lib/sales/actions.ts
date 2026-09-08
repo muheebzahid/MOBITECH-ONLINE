@@ -40,7 +40,8 @@ export async function getInvoiceById(id: string) {
     .select(`
       *,
       invoice_line_items(*, deals(deal_number, model, storage, grade)),
-      payments(*)
+      payments(*),
+      invoice_documents(*)
     `)
     .eq('id', id)
     .single()
@@ -139,34 +140,86 @@ export async function uploadInvoiceDocument(invoiceId: string, formData: FormDat
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${invoiceId}-${Date.now()}.${fileExt}`
+  const fileName = file.name
+  const fileExt = fileName.split('.').pop()
+  const filePath = `invoices/${invoiceId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+  
   const { error: uploadError } = await supabase.storage
     .from('invoices')
-    .upload(fileName, file)
+    .upload(filePath, file)
   
   if (uploadError) return { error: uploadError.message }
 
   const { data: { publicUrl } } = supabase.storage
     .from('invoices')
-    .getPublicUrl(fileName)
+    .getPublicUrl(filePath)
 
-  const { error: updateError } = await supabase
-    .from('invoices')
-    .update({ pdf_url: publicUrl })
-    .eq('id', invoiceId)
+  // Insert into invoice_documents table
+  const { data: doc, error: dbError } = await supabase
+    .from('invoice_documents')
+    .insert({
+      invoice_id: invoiceId,
+      name: fileName,
+      file_url: publicUrl,
+      file_size: file.size,
+      uploaded_by: user.id
+    })
+    .select()
+    .single()
 
-  if (updateError) return { error: updateError.message }
+  if (dbError) {
+    console.error('Error inserting into invoice_documents:', dbError.message)
+  }
+
+  // Update invoices.pdf_url to latest document for backward compatibility
+  await supabase.from('invoices').update({ pdf_url: publicUrl }).eq('id', invoiceId)
 
   revalidatePath(`/dashboard/sales/${invoiceId}`)
   revalidatePath('/dashboard/sales')
-  return { success: true, url: publicUrl }
+  return { success: true, url: publicUrl, document: doc }
+}
+
+export async function deleteInvoiceDocument(docId: string, fileUrl: string, invoiceId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const pathParts = fileUrl.split('/invoices/')
+  if (pathParts.length > 1) {
+    const filePath = pathParts[1].split('?')[0]
+    await supabase.storage.from('invoices').remove([filePath])
+  } else {
+    const fileName = fileUrl.split('/').pop()
+    if (fileName) {
+      await supabase.storage.from('invoices').remove([fileName])
+    }
+  }
+
+  const { error } = await supabase.from('invoice_documents').delete().eq('id', docId)
+  if (error) return { error: error.message }
+
+  // Update pdf_url on invoice to point to another document or null
+  const { data: remainingDocs } = await supabase
+    .from('invoice_documents')
+    .select('file_url')
+    .eq('invoice_id', invoiceId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const latestUrl = remainingDocs && remainingDocs.length > 0 ? remainingDocs[0].file_url : null
+  await supabase.from('invoices').update({ pdf_url: latestUrl }).eq('id', invoiceId)
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  return { success: true }
 }
 
 export async function removeInvoiceDocument(invoiceId: string, pdfUrl: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
+
+  await supabase.from('invoice_documents').delete().eq('invoice_id', invoiceId).eq('file_url', pdfUrl)
 
   const fileName = pdfUrl.split('/').pop()
   if (fileName) {
