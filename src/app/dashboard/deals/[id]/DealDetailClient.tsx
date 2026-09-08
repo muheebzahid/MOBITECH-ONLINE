@@ -444,8 +444,46 @@ export default function DealDetailClient({ deal }: Props) {
       doc.text('Linked Invoices & Sales Statements', 15, y)
       y += 8
 
-      const invoiceLineItems = deal.invoice_line_items || []
-      if (invoiceLineItems.length === 0) {
+      // Group line items by invoice ID so each invoice is listed once with accurate deal contribution
+      const invoiceGroupsMap = new Map<string, {
+        id: string
+        invoice_number: string
+        status: string
+        issue_date: string | null
+        deal_units: number
+        deal_revenue: number
+        invoice_total: number
+      }>()
+
+      const rawLineItems = (deal.invoice_line_items || []).filter((li: any) => li.invoices && li.invoices.status !== 'CANCELLED' && li.invoices.status !== 'VOIDED')
+
+      rawLineItems.forEach((li: any) => {
+        const inv = li.invoices
+        if (!inv) return
+        const qty = Number(li.quantity) || 0
+        const unitPrice = Number(li.unit_price) || 0
+        const revenue = qty * unitPrice
+
+        if (invoiceGroupsMap.has(inv.id)) {
+          const existing = invoiceGroupsMap.get(inv.id)!
+          existing.deal_units += qty
+          existing.deal_revenue += revenue
+        } else {
+          invoiceGroupsMap.set(inv.id, {
+            id: inv.id,
+            invoice_number: inv.invoice_number || '-',
+            status: inv.status || '-',
+            issue_date: inv.issue_date || null,
+            deal_units: qty,
+            deal_revenue: revenue,
+            invoice_total: Number(inv.total_amount) || 0
+          })
+        }
+      })
+
+      const groupedInvoices = Array.from(invoiceGroupsMap.values())
+
+      if (groupedInvoices.length === 0) {
         doc.setFontSize(9)
         doc.setFont('helvetica', 'normal')
         doc.setTextColor(156, 163, 175)
@@ -454,33 +492,32 @@ export default function DealDetailClient({ deal }: Props) {
       } else {
         doc.setFillColor(243, 244, 246)
         doc.rect(15, y, 180, 7, 'F')
-        doc.setFontSize(9)
+        doc.setFontSize(8.5)
         doc.setTextColor(55, 65, 81)
         doc.setFont('helvetica', 'bold')
         doc.text('Invoice #', 17, y + 5)
-        doc.text('Status', 50, y + 5)
-        doc.text('Issue Date', 85, y + 5)
-        doc.text('Due Date', 120, y + 5)
-        doc.text('Total Amount', 155, y + 5)
+        doc.text('Status', 60, y + 5)
+        doc.text('Issue Date', 88, y + 5)
+        doc.text('Units Sold', 118, y + 5)
+        doc.text('Deal Revenue', 145, y + 5)
+        doc.text('Inv Total', 175, y + 5)
         y += 7
 
         doc.setFont('helvetica', 'normal')
         doc.setTextColor(31, 41, 55)
 
-        invoiceLineItems.forEach((line: any) => {
-          const inv = line.invoices
-          if (!inv) return
-
+        groupedInvoices.forEach((inv) => {
           if (y > 270) {
             doc.addPage()
             y = 20
           }
 
-          doc.text(inv.invoice_number || '-', 17, y + 5)
-          doc.text(inv.status || '-', 50, y + 5)
-          doc.text(inv.issue_date ? new Date(inv.issue_date).toLocaleDateString('en-AE') : '-', 85, y + 5)
-          doc.text(inv.due_date ? new Date(inv.due_date).toLocaleDateString('en-AE') : '-', 120, y + 5)
-          doc.text(fmtS(inv.total_amount), 155, y + 5)
+          doc.text(inv.invoice_number, 17, y + 5)
+          doc.text(inv.status, 60, y + 5)
+          doc.text(inv.issue_date ? new Date(inv.issue_date).toLocaleDateString('en-AE') : '-', 88, y + 5)
+          doc.text(`${inv.deal_units} units`, 118, y + 5)
+          doc.text(fmtS(inv.deal_revenue), 145, y + 5)
+          doc.text(fmtS(inv.invoice_total), 175, y + 5)
           
           doc.setDrawColor(243, 244, 246)
           doc.line(15, y + 7, 195, y + 7)
@@ -497,8 +534,11 @@ export default function DealDetailClient({ deal }: Props) {
         doc.setFont('helvetica', 'bold')
         doc.text('TOTAL:', 17, y + 5)
         
-        const totalInvoiceAmt = invoiceLineItems.reduce((sum: number, line: any) => sum + Number(line.invoices?.total_amount || 0), 0)
-        doc.text(fmtS(totalInvoiceAmt), 155, y + 5)
+        const totalDealUnits = groupedInvoices.reduce((sum, g) => sum + g.deal_units, 0)
+        const totalDealRevenue = groupedInvoices.reduce((sum, g) => sum + g.deal_revenue, 0)
+        
+        doc.text(`${totalDealUnits} units`, 118, y + 5)
+        doc.text(fmtS(totalDealRevenue), 145, y + 5)
         y += 7
       }
 
