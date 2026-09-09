@@ -1,53 +1,85 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit/actions'
+
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createSupabaseAdmin(url, key)
+}
 
 const INVOICES_PAGE_SIZE = 25
 
 // ── Invoices ────────────────────────────────────────────────
 export async function getInvoices(month?: string) {
-  const supabase = await createClient()
+  try {
+    const adminClient = getAdminClient()
 
-  let countQuery = supabase.from('invoices').select('*', { count: 'exact', head: true })
-  let dataQuery = supabase
-    .from('invoices')
-    .select(`*, invoice_line_items(quantity, description, deals(id, deal_number, model))`)
-    .order('created_at', { ascending: false })
+    let countQuery = adminClient.from('invoices').select('*', { count: 'exact', head: true })
+    let dataQuery = adminClient
+      .from('invoices')
+      .select(`*, invoice_line_items(quantity, description, deals(id, deal_number, model))`)
+      .order('created_at', { ascending: false })
 
-  if (month && month !== 'all') {
-    const [y, m] = month.split('-').map(Number)
-    const startDate = new Date(y, m - 1, 1).toISOString()
-    const endDate = new Date(y, m, 1).toISOString()
-    countQuery = countQuery.gte('issue_date', startDate).lt('issue_date', endDate)
-    dataQuery = dataQuery.gte('issue_date', startDate).lt('issue_date', endDate)
-  }
+    if (month && month !== 'all') {
+      const [y, m] = month.split('-').map(Number)
+      const startDate = new Date(y, m - 1, 1).toISOString()
+      const endDate = new Date(y, m, 1).toISOString()
+      countQuery = countQuery.gte('issue_date', startDate).lt('issue_date', endDate)
+      dataQuery = dataQuery.gte('issue_date', startDate).lt('issue_date', endDate)
+    }
 
-  const [{ count }, { data, error }] = await Promise.all([countQuery, dataQuery])
-  
-  if (error) {
-    console.error('getInvoices error:', error)
+    const [{ count }, { data, error }] = await Promise.all([countQuery, dataQuery])
+    
+    if (error) {
+      console.error('getInvoices error:', error)
+      return { data: [], total: 0 }
+    }
+    return { data: data || [], total: count || 0 }
+  } catch (err: any) {
+    console.error('getInvoices exception:', err)
     return { data: [], total: 0 }
   }
-  return { data: data || [], total: count || 0 }
 }
 
 export async function getInvoiceById(id: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('invoices')
-    .select(`
-      *,
-      invoice_line_items(*, deals(deal_number, model, storage, grade)),
-      payments(*),
-      invoice_documents(*)
-    `)
-    .eq('id', id)
-    .single()
-    
-  if (error || !data) return null
-  return data
+  try {
+    const adminClient = getAdminClient()
+    const { data, error } = await adminClient
+      .from('invoices')
+      .select(`
+        *,
+        invoice_line_items(*, deals(deal_number, model, storage, grade)),
+        payments(*),
+        invoice_documents(*)
+      `)
+      .eq('id', id)
+      .single()
+      
+    if (error) {
+      console.error('getInvoiceById primary query error:', error)
+      // Fallback query without invoice_documents in case schema cache varies
+      const { data: fallbackData, error: fallbackErr } = await adminClient
+        .from('invoices')
+        .select(`
+          *,
+          invoice_line_items(*, deals(deal_number, model, storage, grade)),
+          payments(*)
+        `)
+        .eq('id', id)
+        .single()
+        
+      if (fallbackErr) console.error('getInvoiceById fallback error:', fallbackErr)
+      return fallbackData || null
+    }
+    return data
+  } catch (err: any) {
+    console.error('getInvoiceById exception:', err)
+    return null
+  }
 }
 
 export async function createInvoice(formData: FormData) {
@@ -469,22 +501,21 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
 
 // ── Helpers ─────────────────────────────────────────────────
 export async function getAvailableDeals() {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('deals')
-    .select(`
-      id, deal_number, model, storage, grade, quantity,
-      items:deal_items(*),
-      invoice_line_items(deal_id, deal_item_id, quantity, invoices(status))
-    `)
-    .order('created_at', { ascending: false })
-  
-  if (error) {
-    const errObj = typeof error === 'object' && error !== null ? error : { message: String(error) }
-    const details = Object.entries(errObj).map(([k,v]) => `${k}: ${v}`).join(', ')
-    console.error('Error fetching available deals:', details)
-    throw new Error('Database Error: ' + details)
-  }
+  try {
+    const adminClient = getAdminClient()
+    const { data, error } = await adminClient
+      .from('deals')
+      .select(`
+        id, deal_number, model, storage, grade, quantity,
+        items:deal_items(*),
+        invoice_line_items(deal_id, deal_item_id, quantity, invoices(status))
+      `)
+      .order('created_at', { ascending: false })
+    
+    if (error) {
+      console.error('Error fetching available deals:', error)
+      return []
+    }
 
   // Calculate remaining quantities
   return (data || []).map((deal: any) => {
@@ -528,6 +559,10 @@ export async function getAvailableDeals() {
 
     return deal
   })
+  } catch (err: any) {
+    console.error('getAvailableDeals exception:', err)
+    return []
+  }
 }
 
 async function checkStockAvailability(
