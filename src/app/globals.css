@@ -1282,3 +1282,42 @@ input[type="checkbox"]:checked::before {
   pointer-events: auto !important;
   opacity: 1 !important;
 }
+
+/* ============================== */
+/* GLOBAL PRINT STYLES           */
+/* ============================== */
+@media print {
+  /* Completely hide all app navigation, headers, footers, docks, overlays, buttons */
+  .sidebar,
+  .sidebar-overlay,
+  .erp-header,
+  .mobile-top-bar,
+  .mobile-bottom-dock,
+  .mobile-hamburger-btn,
+  .mobile-brand-title,
+  .mobile-user-badge,
+  .mobile-sidebar-toggle,
+  .d-mobile-only,
+  .no-print,
+  nav,
+  header,
+  aside,
+  button,
+  .modal-overlay,
+  .modal-box {
+    display: none !important;
+  }
+
+  html, body, #__next, .erp-root, .erp-main {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}

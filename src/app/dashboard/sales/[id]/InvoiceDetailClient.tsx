@@ -307,88 +307,120 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
     <div className="page-root">
       <style>{`
         @media print {
-          @page { margin: 0; size: auto; }
+          @page { 
+            size: A4 portrait; 
+            margin: 12mm 15mm; 
+          }
           
-          /* Override all layout wrappers to be white and auto-height */
+          /* Force all wrapper containers to be clean white and unconstrained */
           html, body, #__next, .erp-root, .erp-main, .page-root {
-            background-color: white !important;
-            background: white !important;
-            color: black !important;
+            background-color: #ffffff !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
             height: auto !important;
             min-height: auto !important;
             overflow: visible !important;
             padding: 0 !important;
             margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
           }
           
-          /* Hide Sidebar and Top Navigation */
-          .sidebar, .erp-header, .deal-detail-header, .mobile-sidebar-toggle { 
+          /* Hide all app chrome, navigation, headers, footers, mobile bottom dock, and overlays */
+          .sidebar, 
+          .sidebar-overlay, 
+          .erp-header, 
+          .mobile-top-bar, 
+          .mobile-bottom-dock, 
+          .mobile-hamburger-btn, 
+          .mobile-brand-title, 
+          .mobile-user-badge, 
+          .deal-detail-header, 
+          .mobile-sidebar-toggle, 
+          .d-mobile-only,
+          .no-print,
+          nav, 
+          header, 
+          aside,
+          button,
+          .modal-overlay,
+          .modal-box { 
             display: none !important; 
           }
           
-          /* Restructure the layout grids */
+          /* Full width layout for print */
           .shipment-body-grid { 
             display: block !important; 
             margin: 0 !important;
             padding: 0 !important;
             gap: 0 !important;
+            width: 100% !important;
           }
           .shipment-body-grid > div:last-child { 
             display: none !important; 
-          } /* Hide right sidebar (Payment history) */
+          } /* Hide right sidebar (Payment history / A/R status) */
           
           /* Invoice Paper Styling */
           .invoice-paper { 
             border: none !important; 
-            padding: 15mm !important; /* Re-apply padding since @page margin is 0 */
+            border-radius: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
             box-shadow: none !important; 
-            background: white !important; 
+            background: #ffffff !important; 
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
           }
           
-          /* Hide interactive elements */
-          .no-print { display: none !important; }
-          
-          /* Table Styling - Option 1: Modern SaaS */
+          /* Table Styling */
           .deals-table-wrap {
-             border: 1px solid #e2e8f0 !important;
-             border-radius: 12px !important;
+             border: 1px solid #cbd5e1 !important;
+             border-radius: 8px !important;
              overflow: hidden !important;
-             background: transparent !important;
+             background: #ffffff !important;
+             margin-top: 16px !important;
+             margin-bottom: 16px !important;
           }
-          .deals-table { border: none !important; width: 100% !important; border-collapse: collapse !important; }
+          .deals-table { 
+            border: none !important; 
+            width: 100% !important; 
+            border-collapse: collapse !important; 
+          }
           .deals-table th { 
-            background-color: #f8fafc !important; 
-            color: #475569 !important; 
+            background-color: #f1f5f9 !important; 
+            color: #1e293b !important; 
             font-size: 11px !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
             letter-spacing: 0.05em !important;
-            padding: 16px 20px !important;
-            border-bottom: 1px solid #e2e8f0 !important; 
+            padding: 12px 16px !important;
+            border-bottom: 2px solid #cbd5e1 !important; 
             border-top: none !important;
             border-left: none !important;
             border-right: none !important;
           }
           .deals-table td { 
-            padding: 16px 20px !important;
-            border-bottom: 1px solid #f1f5f9 !important; 
+            padding: 12px 16px !important;
+            border-bottom: 1px solid #e2e8f0 !important; 
             border-top: none !important;
             border-left: none !important;
             border-right: none !important;
-            background-color: white !important; 
+            background-color: #ffffff !important; 
             vertical-align: top !important;
+            color: #0f172a !important;
+            font-size: 13px !important;
           }
-          .deals-table tr:last-child td { border-bottom: none !important; }
+          .deals-table tr:last-child td { 
+            border-bottom: none !important; 
+          }
           
-          /* Ensure text colors are dark for printing */
+          /* Ensure text colors are crisp and dark for printing */
           .invoice-paper *, .invoice-paper div, .invoice-paper span, .invoice-paper td, .invoice-paper strong { 
             color: #0f172a !important; 
           }
           .text-muted, .invoice-paper .text-muted { color: #475569 !important; }
-          .invoice-brand-name { color: #2563eb !important; }
+          .invoice-brand-name { color: #1e40af !important; font-size: 16px !important; font-weight: 800 !important; }
           
           /* Force color adjust */
           * {
@@ -556,11 +588,17 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                 </div>
               </div>
             ) : (
-              <div>
-                <div style={{ fontSize:'15px', fontWeight:700 }}>{invoice.customer_name}</div>
-                {invoice.customer_address && <div style={{ whiteSpace:'pre-wrap' }}>{invoice.customer_address}</div>}
-                {invoice.customer_email && <div>{invoice.customer_email}</div>}
-                {invoice.customer_phone && <div>{invoice.customer_phone}</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <div style={{ fontSize:'16px', fontWeight:800, color: 'var(--text-primary)' }}>{invoice.customer_name}</div>
+                {invoice.customer_address && invoice.customer_address.trim() !== '-' && invoice.customer_address.trim() !== '' && (
+                  <div style={{ whiteSpace:'pre-wrap', color: 'var(--text-secondary)' }}>{invoice.customer_address}</div>
+                )}
+                {invoice.customer_email && invoice.customer_email.trim() !== '-' && invoice.customer_email.trim() !== '' && (
+                  <div style={{ color: 'var(--text-secondary)' }}>{invoice.customer_email}</div>
+                )}
+                {invoice.customer_phone && invoice.customer_phone.trim() !== '-' && invoice.customer_phone.trim() !== '' && (
+                  <div style={{ color: 'var(--text-secondary)' }}>{invoice.customer_phone}</div>
+                )}
               </div>
             )}
           </div>
