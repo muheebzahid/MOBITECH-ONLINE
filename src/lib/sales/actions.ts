@@ -132,7 +132,7 @@ export async function createInvoice(formData: FormData) {
     }
   }
 
-  const payload = {
+  const payload: Record<string, any> = {
     customer_name:    customerName,
     customer_email:   customerEmail,
     customer_address: customerAddress,
@@ -144,13 +144,43 @@ export async function createInvoice(formData: FormData) {
     created_by:       user.id
   }
 
-  const { data, error } = await supabase
+  let insertResult = await supabase
     .from('invoices')
     .insert(payload)
     .select()
     .single()
 
-  if (error) return { error: error.message }
+  // If unique constraint collision occurs on invoice_number, calculate next safe invoice number and retry
+  if (insertResult.error && insertResult.error.message.includes('invoices_invoice_number_key')) {
+    const issueYear = (payload.issue_date || new Date().toISOString()).slice(0, 4)
+    const { data: maxInv } = await supabase
+      .from('invoices')
+      .select('invoice_number')
+      .ilike('invoice_number', `INV-${issueYear}-%`)
+      .order('invoice_number', { ascending: false })
+      .limit(50)
+
+    let maxNum = 0
+    if (maxInv && maxInv.length > 0) {
+      for (const row of maxInv) {
+        const match = row.invoice_number?.match(/^INV-\d{4}-(\d+)$/)
+        if (match) {
+          const num = parseInt(match[1], 10)
+          if (!isNaN(num) && num > maxNum) maxNum = num
+        }
+      }
+    }
+    const nextNumber = `INV-${issueYear}-${String(maxNum + 1).padStart(4, '0')}`
+
+    insertResult = await supabase
+      .from('invoices')
+      .insert({ ...payload, invoice_number: nextNumber })
+      .select()
+      .single()
+  }
+
+  if (insertResult.error) return { error: insertResult.error.message }
+  const data = insertResult.data
 
   await logAudit({
     tableName: 'invoices',
