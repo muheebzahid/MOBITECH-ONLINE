@@ -34,7 +34,6 @@ function enrichDealFinancials(deal: any) {
     const status = li.invoices?.status || li.invoice_status
     return status === 'PAID'
   })
-  const paidQty = paidLineItems.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
 
   let amexProfitMultiplier = 0
   if (deal.funding_source === 'AMEX') {
@@ -44,7 +43,14 @@ function enrichDealFinancials(deal: any) {
     amexProfitMultiplier = (Number(deal.amex_amount) || 0) / commitment
   }
 
-  const amexProfit = paidQty * baseUnitCost * amexProfitMultiplier * 0.02
+  const dealFeePerUnit = dealQty > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / dealQty) : 0
+
+  const amexProfit = paidLineItems.reduce((sum: number, li: any) => {
+    const matchedItem = (deal.items || []).find((it: any) => it.id === li.deal_item_id || (!li.deal_item_id && deal.items?.length === 1))
+    const stockPlusFee = matchedItem ? (Number(matchedItem.unit_cost || 0) + dealFeePerUnit) : baseUnitCost
+    return sum + (li.quantity || 0) * stockPlusFee * amexProfitMultiplier * 0.02
+  }, 0)
+
   const grossProfit = totalRevenue - totalCogs + amexProfit
 
   return {

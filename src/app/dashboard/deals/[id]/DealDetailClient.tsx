@@ -58,6 +58,14 @@ export default function DealDetailClient({ deal }: Props) {
 
   const dealQty = deal.quantity || 0
   const baseUnitCost = dealQty > 0 ? (deal.total_commitment || 0) / dealQty : 0
+  const dealFeePerUnit = dealQty > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / dealQty) : 0
+  const getLineItemStockPlusFee = (li: any) => {
+    const matchedItem = (deal.items || []).find((it: any) => it.id === li.deal_item_id || (!li.deal_item_id && deal.items?.length === 1))
+    if (matchedItem) {
+      return Number(matchedItem.unit_cost || 0) + dealFeePerUnit
+    }
+    return baseUnitCost
+  }
   let amexProfitMultiplier = 0
   if (deal.funding_source === 'AMEX') {
     amexProfitMultiplier = 1
@@ -766,7 +774,7 @@ export default function DealDetailClient({ deal }: Props) {
               </strong>
             </div>
             {(() => {
-               const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * baseUnitCost * amexProfitMultiplier * 0.02), 0)
+               const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * getLineItemStockPlusFee(li) * amexProfitMultiplier * 0.02), 0)
                if (totalAmexProfit > 0) {
                  return (
                    <div className="info-row">
@@ -894,7 +902,8 @@ export default function DealDetailClient({ deal }: Props) {
                       : 0
 
                     const unitBidCost = Number(item.unit_cost || 0)
-                    const totalCostPerUnit = unitBidCost + dealFeePerUnit + shippingCostPerUnit
+                    const stockPlusFeeCost = unitBidCost + dealFeePerUnit
+                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                     const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -921,7 +930,7 @@ export default function DealDetailClient({ deal }: Props) {
                                 const invProfit = invRevenue - invLandedCost
                                 
                                 const isPaid = inv.status === 'PAID'
-                                const invAmexProfit = isPaid ? (invQty * baseUnitCost * amexProfitMultiplier * 0.02) : 0
+                                const invAmexProfit = isPaid ? (invQty * stockPlusFeeCost * amexProfitMultiplier * 0.02) : 0
 
                                 return (
                                   <div key={li.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '8px 12px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
@@ -966,7 +975,7 @@ export default function DealDetailClient({ deal }: Props) {
                               })}
                               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '24px', paddingTop: '8px', marginTop: '4px', borderTop: '1px solid var(--border-subtle)' }}>
                                 {(() => {
-                                  const skuAmexProfit = skuSales.filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * baseUnitCost * amexProfitMultiplier * 0.02), 0)
+                                  const skuAmexProfit = skuSales.filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * stockPlusFeeCost * amexProfitMultiplier * 0.02), 0)
                                   return (
                                     <>
                                       <span>SKU NET PROFIT: <strong style={{ color: skuProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)' }}>{fmtS(skuProfit)}</strong></span>
@@ -1101,7 +1110,7 @@ export default function DealDetailClient({ deal }: Props) {
                       <div style={{ display: 'flex', gap: '24px', justifyContent: 'flex-end', alignItems: 'center' }}>
                         <span>TOTAL REVENUE: <strong style={{ color: 'var(--text)' }}>{fmtS(deal.total_revenue || 0)}</strong></span>
                         {(() => {
-                          const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * baseUnitCost * amexProfitMultiplier * 0.02), 0)
+                          const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * getLineItemStockPlusFee(li) * amexProfitMultiplier * 0.02), 0)
                           
                           let pureNetProfit = 0
                           deal.items.forEach((item: any) => {
