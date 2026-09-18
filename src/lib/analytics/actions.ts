@@ -127,7 +127,8 @@ export async function getProcurementForecast() {
   const [
     { data: invoiceLineItems },
     { data: dealItems },
-    { data: onlineInventory }
+    { data: onlineInventory },
+    { data: attClosingPrices }
   ] = await Promise.all([
     supabase
       .from('invoice_line_items')
@@ -138,11 +139,18 @@ export async function getProcurementForecast() {
       .select('*, deals(auction_fee, total_cost)'),
     supabase
       .from('inventory_items')
-      .select('model, storage, grade, status, target_price')
+      .select('model, storage, grade, status, target_price'),
+    supabase
+      .from('att_closing_prices')
+      .select('*')
+      .order('auction_date', { ascending: false })
   ])
 
   // Map to hold results: Key = Model|Storage|Grade
   const forecast: Record<string, any> = {}
+
+  // Helper for model normalization
+  const normalizeModelKey = (m: string) => (m || '').trim().toLowerCase().replace(/^apple\s+/i, '').replace(/\s+/g, ' ')
 
   const getForecastNode = (model: string, storage: string, grade: string) => {
     model = model || 'Unknown'
@@ -164,6 +172,11 @@ export async function getProcurementForecast() {
     }
     return forecast[key]
   }
+
+  // Also pre-seed forecast nodes with ATT closing prices so even items without deals show in forecast if ATT price exists
+  ;(attClosingPrices || []).forEach(att => {
+    getForecastNode(att.model, att.storage, att.grade)
+  })
 
   // Calculate total deal items (initial stock)
   ;(dealItems || []).forEach(di => {
@@ -215,6 +228,27 @@ export async function getProcurementForecast() {
 
   const now = new Date().getTime()
 
+  // Map ATT prices by Model|Storage|Grade key for fast lookup
+  const attPriceMap: Record<string, { latest: number, avg: number, count: number, dates: string[] }> = {}
+  ;(attClosingPrices || []).forEach(att => {
+    const normKey = `${normalizeModelKey(att.model)}|${(att.storage || '').trim().toLowerCase()}|${(att.grade || '').trim().toLowerCase()}`
+    if (!attPriceMap[normKey]) {
+      attPriceMap[normKey] = {
+        latest: Number(att.closing_price || 0),
+        avg: Number(att.closing_price || 0),
+        count: 1,
+        dates: [att.auction_date]
+      }
+    } else {
+      attPriceMap[normKey].count += 1
+      attPriceMap[normKey].avg += Number(att.closing_price || 0)
+      attPriceMap[normKey].dates.push(att.auction_date)
+    }
+  })
+  Object.values(attPriceMap).forEach(v => {
+    v.avg = v.count > 0 ? v.avg / v.count : 0
+  })
+
   return Object.values(forecast)
     .map(n => {
       // Calculate months active (min 1 month)
@@ -232,13 +266,20 @@ export async function getProcurementForecast() {
       // If stock is below 50% of MRR, it's a critical low stock alert
       n.isLowStock = n.mrr > 0 && n.currentStock <= (n.mrr * 0.5)
 
-      // Calculate averages (Force rebuild 1)
+      // Calculate averages
       n.avgSellingPrice = n.invoicedSold > 0 ? n.invoicedRevenue / n.invoicedSold : 0
       n.avgUnitCost = n.totalInitialQty > 0 ? n.totalCost / n.totalInitialQty : 0
       n.avgAuctionFee = n.totalInitialQty > 0 ? n.totalAuctionFee / n.totalInitialQty : 0
 
+      // Match ATT Market Closing Price Stats
+      const normKey = `${normalizeModelKey(n.model)}|${(n.storage || '').trim().toLowerCase()}|${(n.grade || '').trim().toLowerCase()}`
+      const attInfo = attPriceMap[normKey]
+      n.latestAttClosingPrice = attInfo ? attInfo.latest : null
+      n.avgAttClosingPrice = attInfo ? attInfo.avg : null
+      n.attLogCount = attInfo ? attInfo.count : 0
+
       return n
     })
-    .filter(n => n.totalSold > 0 || n.currentStock > 0)
+    .filter(n => n.totalSold > 0 || n.currentStock > 0 || n.latestAttClosingPrice !== null)
     .sort((a, b) => b.mrr - a.mrr)
 }

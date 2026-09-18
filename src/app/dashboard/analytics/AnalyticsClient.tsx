@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import AddAttPriceModal from './AddAttPriceModal'
+import ImportAttPricesModal from './ImportAttPricesModal'
+import { deleteAttClosingPrice, type AttClosingPrice } from '@/lib/analytics/attPriceActions'
 
 type HeatmapData = {
   model: string
@@ -13,33 +16,50 @@ type HeatmapData = {
   margin: number
 }
 
-export default function AnalyticsClient({ heatmapData, forecastData }: { heatmapData: HeatmapData[], forecastData?: any[] }) {
+interface AnalyticsProps {
+  heatmapData: HeatmapData[]
+  forecastData?: any[]
+  attClosingPrices?: AttClosingPrice[]
+}
+
+export default function AnalyticsClient({ heatmapData, forecastData, attClosingPrices = [] }: AnalyticsProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
+  const [isPending, startTransition] = useTransition()
   
   const [currency, setCurrency] = useState<'aed'|'usd'>('usd')
-  const [activeTab, setActiveTab] = useState<'heatmap'|'forecast'>(
-    (searchParams.get('tab') as 'heatmap'|'forecast') || 'heatmap'
+  const [activeTab, setActiveTab] = useState<'heatmap'|'forecast'|'att-prices'>(
+    (searchParams.get('tab') as 'heatmap'|'forecast'|'att-prices') || 'heatmap'
   )
   const [forecastModelFilter, setForecastModelFilter] = useState<string>('')
   const [forecastGradeFilter, setForecastGradeFilter] = useState<string>('')
+
+  // ATT Closing Prices UI State
+  const [attSearchQuery, setAttSearchQuery] = useState<string>('')
+  const [attModelFilter, setAttModelFilter] = useState<string>('')
+  const [attGradeFilter, setAttGradeFilter] = useState<string>('')
+  const [showAddAttModal, setShowAddAttModal] = useState<boolean>(false)
+  const [showImportAttModal, setShowImportAttModal] = useState<boolean>(false)
+  const [editingAttItem, setEditingAttItem] = useState<AttClosingPrice | null>(null)
+
   const rate = 3.674
 
   // Sync tab state with URL
   useEffect(() => {
-    const tab = searchParams.get('tab') as 'heatmap' | 'forecast'
+    const tab = searchParams.get('tab') as 'heatmap' | 'forecast' | 'att-prices'
     if (tab && tab !== activeTab) {
       setActiveTab(tab)
     }
   }, [searchParams])
 
-  const handleTabChange = (tab: 'heatmap' | 'forecast') => {
+  const handleTabChange = (tab: 'heatmap' | 'forecast' | 'att-prices') => {
     setActiveTab(tab)
     router.replace(`${pathname}?tab=${tab}`)
   }
 
-  const formatMoney = (amount: number) => {
+  const formatMoney = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) return '-'
     const val = currency === 'usd' ? amount : amount * rate
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format(val)
   }
@@ -72,14 +92,13 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
   const normalizeModel = (m: string) => m?.trim().toLowerCase().replace(/^apple\s+/i, '').replace(/\s+/g, ' ') || ''
 
   // Build unique normalized model labels (canonical display form = most common variant)
-  const normalizedModelMap = new Map<string, string>() // normalized -> best display name
+  const normalizedModelMap = new Map<string, string>()
   ;(forecastData || []).forEach(d => {
     const key = normalizeModel(d.model)
     if (!normalizedModelMap.has(key)) {
-      normalizedModelMap.set(key, d.model) // first seen = display name
+      normalizedModelMap.set(key, d.model)
     }
   })
-  // Sort normalized keys alphabetically for the dropdown
   const uniqueForecastModels = Array.from(normalizedModelMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   const uniqueForecastGrades = Array.from(new Set(forecastData?.map(d => d.grade) || [])).sort()
 
@@ -94,12 +113,34 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
   const totalForecastShortfall = filteredForecast.reduce((sum, d) => sum + (d.shortfall || 0), 0)
   const totalForecastBid = filteredForecast.reduce((sum, d) => sum + (d.recommendedBid || 0), 0)
 
+  // ATT Prices Filtering
+  const uniqueAttModels = Array.from(new Set(attClosingPrices.map(a => a.model))).sort()
+  const uniqueAttGrades = Array.from(new Set(attClosingPrices.map(a => a.grade))).sort()
+
+  const filteredAttPrices = attClosingPrices.filter(a => {
+    const matchesQuery = attSearchQuery === '' || 
+      a.model.toLowerCase().includes(attSearchQuery.toLowerCase()) ||
+      a.storage.toLowerCase().includes(attSearchQuery.toLowerCase()) ||
+      a.notes?.toLowerCase().includes(attSearchQuery.toLowerCase())
+    const matchesModel = attModelFilter === '' || a.model === attModelFilter
+    const matchesGrade = attGradeFilter === '' || a.grade === attGradeFilter
+    return matchesQuery && matchesModel && matchesGrade
+  })
+
+  const handleDeleteAttPrice = (id: string, model: string) => {
+    if (!confirm(`Are you sure you want to delete the closing price log for ${model}?`)) return
+    startTransition(async () => {
+      const res = await deleteAttClosingPrice(id)
+      if (res.error) alert('Delete failed: ' + res.error)
+    })
+  }
+
   return (
     <div className="page-root" style={{ overflow: 'hidden', gap: '12px' }}>
       <div className="page-header" style={{ justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <div>
           <h1 className="page-title">Deal Autopsy & Analytics</h1>
-          <p className="page-subtitle">Profitability Breakdown and Predictive Procurement</p>
+          <p className="page-subtitle">Profitability Breakdown, AT&T Market Benchmark & Predictive Procurement</p>
         </div>
         <div style={{ display: 'flex', background: 'var(--bg-elevated)', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
           <button 
@@ -146,6 +187,23 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
             </span>
           )}
         </button>
+        <button
+          className={`btn-ghost ${activeTab === 'att-prices' ? 'active-tab' : ''}`}
+          onClick={() => handleTabChange('att-prices')}
+          style={{
+            background: activeTab === 'att-prices' ? 'var(--bg-hover)' : 'transparent',
+            fontWeight: activeTab === 'att-prices' ? 600 : 400,
+            color: activeTab === 'att-prices' ? 'var(--text)' : 'var(--text-muted)',
+            display: 'flex', alignItems: 'center', gap: '6px'
+          }}
+        >
+          AT&T Closing Prices
+          {attClosingPrices.length > 0 && (
+            <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>
+              {attClosingPrices.length}
+            </span>
+          )}
+        </button>
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
@@ -185,6 +243,7 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
         }
       `}} />
 
+      {/* FORECAST TAB */}
       {activeTab === 'forecast' && (
         <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Fixed header */}
@@ -192,7 +251,7 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
             <div>
               <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Smart Purchasing Report <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-muted)' }}>(All-Time History)</span></h2>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Data is generated dynamically based on average monthly sales velocity.
+                Data generated dynamically based on monthly sales velocity & historical AT&T market closing prices.
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -236,6 +295,8 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
                   <th title="Recommended Bid Quantity" style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Rec. Bid</th>
                   <th title="Average Landed Cost (Cost + Fee)" style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Avg Cost</th>
                   <th title="Average Selling Price" style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>ASP</th>
+                  <th title="Latest Logged AT&T Auction Closing Price" style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>ATT Closing Price</th>
+                  <th title="Market Spread (ASP minus ATT Closing Price)" style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Spread</th>
                   <th title="Return on Investment %" style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>ROI %</th>
                 </tr>
               </thead>
@@ -244,6 +305,8 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
                   const asp = d.avgSellingPrice || (d.invoicedSold > 0 ? d.invoicedRevenue / d.invoicedSold : (d.totalSold > 0 ? d.totalRevenue / d.totalSold : 0)) || 0;
                   const cost = (d.avgUnitCost || 0) + (d.avgAuctionFee || 0);
                   const roi = cost > 0 ? ((asp - cost) / cost) * 100 : 0;
+                  const attPrice = d.latestAttClosingPrice;
+                  const spread = (attPrice !== null && attPrice > 0 && asp > 0) ? (asp - attPrice) : null;
                   
                   return (
                     <tr key={i} style={d.isLowStock ? { boxShadow: 'inset 4px 0 0 #ef4444', backgroundColor: 'rgba(239, 68, 68, 0.03)' } : {}}>
@@ -264,6 +327,25 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
                       <td style={{ textAlign: 'right', color: 'var(--accent-blue)', fontWeight: 700 }}>
                         {formatMoney(asp)}
                       </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {attPrice !== null ? (
+                          <span 
+                            onClick={() => {
+                              setAttModelFilter(d.model)
+                              handleTabChange('att-prices')
+                            }}
+                            style={{ color: 'var(--accent-purple)', cursor: 'pointer', textDecoration: 'underline' }}
+                            title="Click to view logged AT&T prices for this model"
+                          >
+                            {formatMoney(attPrice)}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>–</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: spread !== null ? (spread >= 0 ? 'var(--status-green)' : '#ef4444') : 'var(--text-muted)' }}>
+                        {spread !== null ? formatMoney(spread) : '–'}
+                      </td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: roi >= 0 ? 'var(--status-green)' : '#ef4444' }}>
                         {roi.toFixed(1)}%
                       </td>
@@ -272,8 +354,8 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
                 })}
                 {filteredForecast.length === 0 && (
                   <tr>
-                    <td colSpan={11} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                      No sales history available to forecast.
+                    <td colSpan={13} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                      No sales or AT&T pricing history available to forecast.
                     </td>
                   </tr>
                 )}
@@ -287,7 +369,7 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>{totalForecastStock}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>{totalForecastShortfall}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--status-green)' }}>+{totalForecastBid}</td>
-                    <td colSpan={3}></td>
+                    <td colSpan={5}></td>
                   </tr>
                 </tfoot>
               )}
@@ -296,7 +378,144 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
         </div>
       )}
 
+      {/* AT&T CLOSING PRICES TAB */}
+      {activeTab === 'att-prices' && (
+        <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Header Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>AT&T Auction Closing Prices Tracker</h2>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Log and benchmark historical AT&T market auction closing prices to inform predictive procurement bids.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={() => setShowImportAttModal(true)}
+                className="btn-ghost" 
+                style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                📊 Import Excel / CSV
+              </button>
+              <button 
+                onClick={() => {
+                  setEditingAttItem(null)
+                  setShowAddAttModal(true)
+                }}
+                className="btn-primary" 
+                style={{ background: 'var(--accent-purple)', borderColor: 'var(--accent-purple)', fontSize: '13px' }}
+              >
+                + Add Closing Price
+              </button>
+            </div>
+          </div>
 
+          {/* Filter Bar */}
+          <div style={{ display: 'flex', gap: '12px', padding: '12px 24px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap' }}>
+            <input 
+              type="text" 
+              placeholder="Search model, storage, notes..." 
+              className="form-input" 
+              value={attSearchQuery}
+              onChange={(e) => setAttSearchQuery(e.target.value)}
+              style={{ minWidth: '220px', flex: 1 }}
+            />
+            <select
+              className="form-input"
+              value={attModelFilter}
+              onChange={(e) => setAttModelFilter(e.target.value)}
+              style={{ minWidth: '180px' }}
+            >
+              <option value="">All Models</option>
+              {uniqueAttModels.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <select
+              className="form-input"
+              value={attGradeFilter}
+              onChange={(e) => setAttGradeFilter(e.target.value)}
+              style={{ minWidth: '140px' }}
+            >
+              <option value="">All Grades</option>
+              {uniqueAttGrades.map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Table */}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            <table className="premium-table">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Auction Date</th>
+                  <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Model</th>
+                  <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Storage</th>
+                  <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Grade</th>
+                  <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Carrier</th>
+                  <th style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Closing Price</th>
+                  <th style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Lot Qty</th>
+                  <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Notes / Batch</th>
+                  <th style={{ textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAttPrices.map(item => (
+                  <tr key={item.id}>
+                    <td style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      {new Date(item.auction_date).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.model}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{item.storage}</td>
+                    <td>
+                      <span style={{ background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.3)', color: 'var(--accent-purple)', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                        {item.grade}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }}>{item.carrier || 'Unlocked'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-purple)', fontSize: '15px' }}>
+                      {formatMoney(item.closing_price)}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{item.quantity}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{item.notes || '–'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button 
+                          className="btn-ghost" 
+                          style={{ padding: '3px 8px', fontSize: '11px' }}
+                          onClick={() => {
+                            setEditingAttItem(item)
+                            setShowAddAttModal(true)
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          className="btn-ghost" 
+                          style={{ padding: '3px 8px', fontSize: '11px', color: '#ef4444' }}
+                          onClick={() => handleDeleteAttPrice(item.id, `${item.model} (${item.storage})`)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredAttPrices.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                      No AT&T closing price logs found. Click <strong>"+ Add Closing Price"</strong> or <strong>"Import Excel"</strong> above to record auction market prices.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* HEATMAP TAB */}
       {activeTab === 'heatmap' && (
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '8px' }}>
 
@@ -435,6 +654,16 @@ export default function AnalyticsClient({ heatmapData, forecastData }: { heatmap
         </div>
       )}
 
+      {/* Modals */}
+      <AddAttPriceModal
+        isOpen={showAddAttModal}
+        onClose={() => setShowAddAttModal(false)}
+        initialData={editingAttItem}
+      />
+      <ImportAttPricesModal
+        isOpen={showImportAttModal}
+        onClose={() => setShowImportAttModal(false)}
+      />
     </div>
   )
 }

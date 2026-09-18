@@ -1,17 +1,19 @@
 import { Suspense } from 'react'
 import { getProfitabilityHeatmap, getProcurementForecast } from '@/lib/analytics/actions'
+import { getAttClosingPrices } from '@/lib/analytics/attPriceActions'
 import AnalyticsClient from './AnalyticsClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 async function AnalyticsContent() {
-  const [heatmapData, forecastData] = await Promise.all([
+  const [heatmapData, forecastData, attClosingPrices] = await Promise.all([
     getProfitabilityHeatmap(),
-    getProcurementForecast()
+    getProcurementForecast(),
+    getAttClosingPrices()
   ])
 
-  return <AnalyticsClient heatmapData={heatmapData} forecastData={forecastData} />
+  return <AnalyticsClient heatmapData={heatmapData} forecastData={forecastData} attClosingPrices={attClosingPrices} />
 }
 
 export default function AnalyticsPage() {
