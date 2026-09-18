@@ -1155,8 +1155,17 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
 @media (max-width: 768px) {
   .d-mobile-only { display: flex !important; }
 
+  /* Safe Area & Mobile Bottom Dock Spacing */
+  .mobile-top-bar {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .mobile-bottom-dock {
+    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    height: calc(64px + env(safe-area-inset-bottom)) !important;
+  }
+
   .erp-main {
-    padding-bottom: 80px !important;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom)) !important;
   }
 
   /* Prevent iOS zoom on input focus */
@@ -1170,16 +1179,120 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
     font-size: 16px !important;
   }
   
-  .page-root { padding: 16px; }
-  .header-left { gap: 8px; }
-  .page-title { font-size: 16px; }
-  .deal-summary-row { grid-template-columns: 1fr; }
-  .kpi-grid { grid-template-columns: 1fr; padding: 16px 16px 0; }
-  .modules-grid { grid-template-columns: 1fr; padding: 16px; }
-  .erp-header { padding: 0 16px; }
-  .deals-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .deals-table { min-width: 700px; }
+  .page-root { 
+    padding: 12px 14px 28px !important; 
+  }
+
+  .page-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    margin-bottom: 16px !important;
+  }
+  .header-left { 
+    gap: 4px !important; 
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .page-title { 
+    font-size: 20px !important; 
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+  }
+  .page-subtitle {
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    color: var(--text-secondary) !important;
+  }
+
+  /* Mobile Header Action Buttons Flex Grid */
+  .header-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .header-actions button, 
+  .header-actions a,
+  .header-actions .btn-primary, 
+  .header-actions .btn-ghost {
+    flex: 1 1 calc(50% - 6px) !important;
+    min-height: 42px !important;
+    font-size: 13px !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 8px 10px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Mobile App Style Horizontal Scrollable Metric Cards */
+  .deal-summary-row,
+  .kpi-grid {
+    display: flex !important;
+    flex-direction: row !important;
+    grid-template-columns: none !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+    padding-bottom: 6px !important;
+  }
+  .deal-summary-card,
+  .kpi-card {
+    flex: 0 0 80% !important;
+    scroll-snap-align: start;
+    min-width: 220px !important;
+    padding: 14px 16px !important;
+  }
   
+  /* Filter Pills & Stage Tabs Horizontal Touch Scroll */
+  .stage-pills,
+  .nav-tabs,
+  .filter-tabs {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px !important;
+    padding-bottom: 6px !important;
+    margin-bottom: 14px !important;
+    width: 100% !important;
+    flex-wrap: nowrap !important;
+  }
+  .stage-pill,
+  .tab-btn {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    min-height: 38px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+  }
+
+  /* Table Touch Wrap & Card Touch Controls */
+  .deals-table-wrap,
+  .table-container,
+  .table-responsive {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+  .deals-table,
+  .inventory-table,
+  .clients-table,
+  .sales-table {
+    min-width: 640px;
+  }
+  
+  .deals-table td,
+  .deals-table th,
+  .inventory-table td,
+  .inventory-table th {
+    padding: 12px 14px !important;
+    font-size: 13px !important;
+  }
+
   .sidebar {
     position: fixed;
     top: 0;
@@ -1193,9 +1306,15 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
     transform: translateX(0);
   }
   
-  .modal-box { width: 95.5% !important; max-width: none !important; max-height: 90vh !important; overflow-y: auto !important; }
-  .modal-header { padding: 16px 20px; }
-  .modal-form { padding: 16px 20px; }
+  .modal-box { 
+    width: 95.5% !important; 
+    max-width: none !important; 
+    max-height: 88vh !important; 
+    overflow-y: auto !important; 
+    border-radius: 16px !important;
+  }
+  .modal-header { padding: 14px 18px; }
+  .modal-form { padding: 14px 18px; }
   .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
   
   .deal-detail-header { flex-direction: column; gap: 12px; }
