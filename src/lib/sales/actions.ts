@@ -57,7 +57,7 @@ export async function getInvoiceById(id: string) {
         invoice_documents(*)
       `)
       .eq('id', id)
-      .single()
+      .maybeSingle()
       
     if (error) {
       console.error('getInvoiceById primary query error:', error)
@@ -70,7 +70,7 @@ export async function getInvoiceById(id: string) {
           payments(*)
         `)
         .eq('id', id)
-        .single()
+        .maybeSingle()
         
       if (fallbackErr) console.error('getInvoiceById fallback error:', fallbackErr)
       return fallbackData || null
