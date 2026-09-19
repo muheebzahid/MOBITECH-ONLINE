@@ -58,11 +58,14 @@ export default function DealDetailClient({ deal }: Props) {
 
   const dealQty = deal.quantity || 0
   const baseUnitCost = dealQty > 0 ? (deal.total_commitment || 0) / dealQty : 0
-  const dealFeePerUnit = dealQty > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / dealQty) : 0
+  // Cost-weighted fee rate: each SKU pays feeRate × its own unit_cost (not a flat fee per unit)
+  const totalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
+  const bidTotal = Number(deal.total_commitment || 0) - totalFees
+  const feeRate = bidTotal > 0 ? totalFees / bidTotal : 0
   const getLineItemStockPlusFee = (li: any) => {
     const matchedItem = (deal.items || []).find((it: any) => it.id === li.deal_item_id || (!li.deal_item_id && deal.items?.length === 1))
     if (matchedItem) {
-      return Number(matchedItem.unit_cost || 0) + dealFeePerUnit
+      return Number(matchedItem.unit_cost || 0) * (1 + feeRate)
     }
     return baseUnitCost
   }
@@ -265,12 +268,12 @@ export default function DealDetailClient({ deal }: Props) {
           ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits)
           : 0
 
-        const dealFeePerUnit = deal.quantity > 0
-          ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / deal.quantity)
-          : 0
+        const dealTotalFees = (Number(deal.auction_fee || 0) + Number(deal.other_fees || 0))
+        const dealBidTotal = Number(deal.total_commitment || 0) - dealTotalFees
+        const dealFeeRate = dealBidTotal > 0 ? dealTotalFees / dealBidTotal : 0
 
         const unitBidCost = Number(item.unit_cost || 0)
-        const stockPlusFeeCost = unitBidCost + dealFeePerUnit
+        const stockPlusFeeCost = unitBidCost * (1 + dealFeeRate)
         const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
 
         const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
@@ -845,13 +848,13 @@ export default function DealDetailClient({ deal }: Props) {
                       ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits)
                       : 0
 
-                    // Deal-level fee per unit (auction fee + order/other fees)
-                    const dealFeePerUnit = deal.quantity > 0
-                      ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / deal.quantity)
-                      : 0
+                    // Cost-weighted fee rate: each SKU pays feeRate × its own unit_cost
+                    const skuTotalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
+                    const skuBidTotal = Number(deal.total_commitment || 0) - skuTotalFees
+                    const skuFeeRate = skuBidTotal > 0 ? skuTotalFees / skuBidTotal : 0
 
                     const unitBidCost = Number(item.unit_cost || 0)
-                    const stockPlusFeeCost = unitBidCost + dealFeePerUnit
+                    const stockPlusFeeCost = unitBidCost * (1 + skuFeeRate)
                     const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
@@ -897,12 +900,12 @@ export default function DealDetailClient({ deal }: Props) {
                       ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits)
                       : 0
 
-                    const dealFeePerUnit = deal.quantity > 0
-                      ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / deal.quantity)
-                      : 0
+                    const salesTotalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
+                    const salesBidTotal = Number(deal.total_commitment || 0) - salesTotalFees
+                    const salesFeeRate = salesBidTotal > 0 ? salesTotalFees / salesBidTotal : 0
 
                     const unitBidCost = Number(item.unit_cost || 0)
-                    const stockPlusFeeCost = unitBidCost + dealFeePerUnit
+                    const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
                     const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)

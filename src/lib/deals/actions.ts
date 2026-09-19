@@ -25,9 +25,25 @@ function enrichDealFinancials(deal: any) {
   })
 
   const totalRevenue = activeLineItems.reduce((sum: number, li: any) => sum + (li.quantity || 0) * (li.unit_price || 0), 0)
-  const soldQty = activeLineItems.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
-  
-  const totalCogs = soldQty * (baseUnitCost + shippingCostPerUnit)
+
+  // Cost-weighted fee rate: auction fee is a % of bid total, so each SKU pays feeRate x its own unit_cost
+  // This is correct because high-value SKUs contribute more to the bid and should carry more fee
+  const totalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
+  const bidTotal = Number(deal.total_commitment || 0) - totalFees
+  const feeRate = bidTotal > 0 ? totalFees / bidTotal : 0
+
+  // Helper: returns stock + proportional fee for a line item's matched SKU
+  const getSkuStockPlusFee = (li: any): number => {
+    const matchedItem = (deal.items || []).find((it: any) => it.id === li.deal_item_id || (!li.deal_item_id && deal.items?.length === 1))
+    const unitCost = matchedItem
+      ? Number(matchedItem.unit_cost || 0)
+      : (bidTotal > 0 ? bidTotal / dealQty : baseUnitCost)
+    return unitCost * (1 + feeRate)
+  }
+
+  const totalCogs = activeLineItems.reduce((sum: number, li: any) => {
+    return sum + (li.quantity || 0) * (getSkuStockPlusFee(li) + shippingCostPerUnit)
+  }, 0)
 
   // Amex Profit based on paid-in-full units
   const paidLineItems = activeLineItems.filter((li: any) => {
@@ -43,11 +59,8 @@ function enrichDealFinancials(deal: any) {
     amexProfitMultiplier = (Number(deal.amex_amount) || 0) / commitment
   }
 
-  const dealFeePerUnit = dealQty > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / dealQty) : 0
-
   const amexProfit = paidLineItems.reduce((sum: number, li: any) => {
-    const matchedItem = (deal.items || []).find((it: any) => it.id === li.deal_item_id || (!li.deal_item_id && deal.items?.length === 1))
-    const stockPlusFee = matchedItem ? (Number(matchedItem.unit_cost || 0) + dealFeePerUnit) : baseUnitCost
+    const stockPlusFee = getSkuStockPlusFee(li)
     return sum + (li.quantity || 0) * stockPlusFee * amexProfitMultiplier * 0.02
   }, 0)
 
