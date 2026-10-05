@@ -56,7 +56,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
 
   let onlineOrdersQuery = supabase
     .from('online_orders')
-    .select('id, total_amount, sale_date')
+    .select('id, order_number, platform, status, total_amount, sale_date, items:online_order_items(id, model, storage, grade, color, quantity, unit_price)')
     .neq('status', 'CANCELLED')
   if (fromDate) onlineOrdersQuery = onlineOrdersQuery.gte('sale_date', fromDate)
   if (toDate) onlineOrdersQuery = onlineOrdersQuery.lte('sale_date', toDate)
@@ -76,7 +76,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   if (fromDate) opexQuery = opexQuery.gte('expense_date', fromDate)
   if (toDate) opexQuery = opexQuery.lte('expense_date', toDate)
 
-  // Execute all independent queries in parallel via Promise.all (1 roundtrip instead of 11 sequential roundtrips)
+  // Execute all independent queries in parallel via Promise.all
   const [
     { data: invoices, error: invErr },
     { data: onlineOrders },
@@ -87,8 +87,6 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     { data: shipments, error: shipErr },
     { data: fetchedOpex, error: opexErr },
     { data: settings },
-    { data: partners },
-    { data: partnerTx },
     { data: lineItemsWithPrice }
   ] = await Promise.all([
     invoicesQuery,
@@ -96,12 +94,10 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     dealsQuery,
     supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(unit_cost), invoices!inner(id, status, issue_date, client_id)'),
     supabase.from('invoice_line_items').select('quantity, deal_id, invoices!inner(status)'),
-    supabase.from('inventory_items').select('unit_cost, logistics_cost, online_order_id').not('online_order_id', 'is', null),
+    supabase.from('inventory_items').select('id, unit_cost, logistics_cost, repair_cost, model, storage, grade, color, online_order_id, online_order_item_id, status, refurb_stage').not('online_order_id', 'is', null),
     supabase.from('shipments').select('total_logistics_cost'),
     opexQuery,
     supabase.from('treasury_settings').select('*').limit(1).single(),
-    supabase.from('partners').select('*').order('name', { ascending: true }),
-    supabase.from('partner_transactions').select('*, partners(name)').order('created_at', { ascending: false }),
     statementDateFilter
       ? supabase.from('invoice_line_items').select('quantity, unit_price, deal_id, invoices!inner(status)')
       : Promise.resolve({ data: null, error: null } as any)
@@ -204,21 +200,185 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
 
   let onlineCogsDevices = 0
   let onlineCogsLogistics = 0
-  let onlineCogs = 0
+  let onlineTotalRepairCost = 0
+  let onlineOtherExpenses = 0
+  let onlineTotalUnitsSold = 0
+
+  const orderMap = new Map<string, any>()
+  if (onlineOrders) {
+    onlineOrders.forEach((ord: any) => {
+      orderMap.set(ord.id, ord)
+    })
+  }
+
+  // Platform and SKU breakdown accumulators
+  const platformStats = {
+    AMAZON: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 },
+    REVIBE: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 }
+  }
+
+  const skuMap = new Map<string, {
+    model: string
+    storage: string
+    grade: string
+    quantity: number
+    revenue: number
+    cogsDevices: number
+    logisticsCost: number
+    repairCost: number
+    totalCost: number
+    netProfit: number
+    avgPrice: number
+    avgCost: number
+    profitPerUnit: number
+    roi: number
+  }>()
 
   if (!statementDateFilter) {
     const validOnlineOrderIds = new Set(onlineOrders?.map((o: any) => o.id) || [])
+
+    // 1. Process online inventory items
     if (onlineInventory) {
       onlineInventory.forEach(item => {
         if ((fromDate || toDate) && !validOnlineOrderIds.has(item.online_order_id)) {
           return
         }
-        onlineCogsDevices += Number(item.unit_cost || 0)
-        onlineCogsLogistics += Number(item.logistics_cost || 0)
+
+        const devCost = Number(item.unit_cost || 0)
+        const logCost = Number(item.logistics_cost || 0)
+        const repCost = Number(item.repair_cost || 0)
+
+        onlineCogsDevices += devCost
+        onlineCogsLogistics += logCost
+        onlineTotalRepairCost += repCost
+        onlineTotalUnitsSold += 1
+
+        const order = orderMap.get(item.online_order_id)
+        const plat = (order?.platform === 'AMAZON' ? 'AMAZON' : 'REVIBE') as 'AMAZON' | 'REVIBE'
+        if (platformStats[plat]) {
+          platformStats[plat].unitsSold += 1
+          platformStats[plat].cogsDevices += devCost
+          platformStats[plat].cogsLogistics += logCost
+          platformStats[plat].repairCost += repCost
+        }
+
+        // SKU Map grouping
+        const skuKey = `${item.model || 'Unknown'}__${item.storage || ''}__${item.grade || ''}`.toUpperCase()
+        if (!skuMap.has(skuKey)) {
+          skuMap.set(skuKey, {
+            model: item.model || 'Unknown',
+            storage: item.storage || '',
+            grade: item.grade || '',
+            quantity: 0,
+            revenue: 0,
+            cogsDevices: 0,
+            logisticsCost: 0,
+            repairCost: 0,
+            totalCost: 0,
+            netProfit: 0,
+            avgPrice: 0,
+            avgCost: 0,
+            profitPerUnit: 0,
+            roi: 0
+          })
+        }
+        const skuEntry = skuMap.get(skuKey)!
+        skuEntry.quantity += 1
+        skuEntry.cogsDevices += devCost
+        skuEntry.logisticsCost += logCost
+        skuEntry.repairCost += repCost
+        skuEntry.totalCost += (devCost + logCost + repCost)
       })
     }
-    onlineCogs = onlineCogsDevices + onlineCogsLogistics
+
+    // 2. Add platform revenue & SKU revenue from orders
+    if (onlineOrders) {
+      onlineOrders.forEach((order: any) => {
+        const plat = (order.platform === 'AMAZON' ? 'AMAZON' : 'REVIBE') as 'AMAZON' | 'REVIBE'
+        const ordRevenue = Number(order.total_amount || 0)
+        if (platformStats[plat]) {
+          platformStats[plat].revenue += ordRevenue
+        }
+
+        // Distribute revenue to SKUs
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach((it: any) => {
+            const skuKey = `${it.model || 'Unknown'}__${it.storage || ''}__${it.grade || ''}`.toUpperCase()
+            const itemRev = Number(it.unit_price || 0) * (Number(it.quantity) || 1)
+            if (skuMap.has(skuKey)) {
+              skuMap.get(skuKey)!.revenue += itemRev
+            } else {
+              skuMap.set(skuKey, {
+                model: it.model || 'Unknown',
+                storage: it.storage || '',
+                grade: it.grade || '',
+                quantity: Number(it.quantity) || 1,
+                revenue: itemRev,
+                cogsDevices: 0,
+                logisticsCost: 0,
+                repairCost: 0,
+                totalCost: 0,
+                netProfit: 0,
+                avgPrice: 0,
+                avgCost: 0,
+                profitPerUnit: 0,
+                roi: 0
+              })
+            }
+          })
+        }
+      })
+    }
+
+    // 3. Online-specific operational expenses (e.g. Marketing / Platform Fees)
+    if (fetchedOpex) {
+      fetchedOpex.forEach((exp: any) => {
+        const cat = String(exp.category || '').toUpperCase()
+        const desc = String(exp.description || '').toLowerCase()
+        if (cat === 'MARKETING' || desc.includes('amazon') || desc.includes('revibe') || desc.includes('online')) {
+          onlineOtherExpenses += Number(exp.amount || 0)
+        }
+      })
+    }
   }
+
+  // Finalize Platform Stats
+  (['AMAZON', 'REVIBE'] as const).forEach(plat => {
+    const p = platformStats[plat]
+    p.totalCost = p.cogsDevices + p.cogsLogistics + p.repairCost + p.otherExpenses
+    p.grossProfit = p.revenue - (p.cogsDevices + p.cogsLogistics)
+    p.netProfit = p.revenue - p.totalCost
+    p.roi = p.totalCost > 0 ? (p.netProfit / p.totalCost) * 100 : 0
+  })
+
+  // Finalize SKU Breakdown
+  const skuBreakdown = Array.from(skuMap.values()).map(sku => {
+    const netProfit = sku.revenue - sku.totalCost
+    const avgPrice = sku.quantity > 0 ? sku.revenue / sku.quantity : 0
+    const avgCost = sku.quantity > 0 ? sku.totalCost / sku.quantity : 0
+    const profitPerUnit = sku.quantity > 0 ? netProfit / sku.quantity : 0
+    const roi = sku.totalCost > 0 ? (netProfit / sku.totalCost) * 100 : 0
+    return {
+      ...sku,
+      netProfit,
+      avgPrice,
+      avgCost,
+      profitPerUnit,
+      roi
+    }
+  }).sort((a, b) => b.revenue - a.revenue)
+
+  const onlineTotalCost = onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost + onlineOtherExpenses
+  const onlineGrossProfit = onlineRevenue - (onlineCogsDevices + onlineCogsLogistics)
+  const onlineNetProfit = onlineRevenue - onlineTotalCost
+  const onlineRoi = onlineTotalCost > 0 ? (onlineNetProfit / onlineTotalCost) * 100 : 0
+  const onlineGrossMarginPct = onlineRevenue > 0 ? (onlineGrossProfit / onlineRevenue) * 100 : 0
+  const onlineNetMarginPct = onlineRevenue > 0 ? (onlineNetProfit / onlineRevenue) * 100 : 0
+  const onlineAvgSellingPrice = onlineTotalUnitsSold > 0 ? onlineRevenue / onlineTotalUnitsSold : 0
+  const onlineAvgCostPerUnit = onlineTotalUnitsSold > 0 ? onlineTotalCost / onlineTotalUnitsSold : 0
+  const onlineAvgProfitPerUnit = onlineTotalUnitsSold > 0 ? onlineNetProfit / onlineTotalUnitsSold : 0
+
+  const onlineCogs = onlineCogsDevices + onlineCogsLogistics
 
   const cogsDevices = wholesaleCogsDevices + onlineCogsDevices
   const cogsLogistics = wholesaleCogsLogistics + onlineCogsLogistics
@@ -269,7 +429,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   }
 
   const grossProfitWholesale = wholesaleRevenue - wholesaleCogs
-  const grossProfitOnline = onlineRevenue - onlineCogs
+  const grossProfitOnline = onlineGrossProfit
   const grossProfit = totalRevenue - cogs
   const netProfit = grossProfit + amexProfit - totalOpex
 
@@ -292,63 +452,91 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     .filter((inv: any) => inv.status !== 'CANCELLED' && inv.status !== 'VOIDED')
     .reduce((sum, inv) => sum + (Number(inv.balance_due) || 0), 0) : 0
 
-  // Suppliers (ATT, ecoATM, T-Mobile) are paid 100% upfront at auction win time.
   const accountsPayable = 0
   const amexLiability = amexStuck
   const liquidCash = Math.max(0, cashAvailable)
-  const partnerCapital = (partners || []).reduce((sum: number, p: any) => sum + Number(p.current_balance || 0), 0)
   const retainedEarnings = netProfit
 
   const totalAssets = liquidCash + accountsReceivable + inventoryValue + onlineUnsoldValue
   const totalLiabilities = accountsPayable + amexLiability
-  const totalEquity = partnerCapital + retainedEarnings
+  const totalEquity = retainedEarnings
 
-  // Payment Cycle Waterfall Calculations (AMEX $500k Cap & Cash Pool $300k Settlement)
-  const cycleGroups: Record<string, { cycle: string; amexPurchases: number; collectedCash: number; totalInvoiced: number; openAR: number; dealsCount: number; isCapped: boolean }> = {}
-
-  if (deals) {
-    deals.forEach((deal: any) => {
-      const cycleDate = deal.amex_statement_date || deal.created_at || new Date().toISOString()
-      const cycleKey = cycleDate.slice(0, 7)
-      
-      if (!cycleGroups[cycleKey]) {
-        cycleGroups[cycleKey] = {
-          cycle: cycleKey,
-          amexPurchases: 0,
-          collectedCash: 0,
-          totalInvoiced: 0,
-          openAR: 0,
-          dealsCount: 0,
-          isCapped: false
-        }
-      }
-
-      const amexAmt = Number(deal.amex_amount) || (deal.funding_source === 'AMEX' ? Number(deal.total_commitment) : 0) || (deal.funding_source === 'MIXED' ? Number(deal.total_commitment) / 2 : 0)
-      cycleGroups[cycleKey].amexPurchases += amexAmt
-      cycleGroups[cycleKey].dealsCount += 1
-      cycleGroups[cycleKey].isCapped = cycleGroups[cycleKey].amexPurchases > amexLimit
-
-      const dealLineItems = (allLineItems || []).filter((li: any) => li.deal_id === deal.id && li.invoices?.status !== 'CANCELLED')
-      dealLineItems.forEach((li: any) => {
-        const inv = li.invoices
-        if (inv) {
-          cycleGroups[cycleKey].collectedCash += Number(inv.amount_paid || 0)
-          cycleGroups[cycleKey].openAR += Number(inv.balance_due || 0)
-        }
-      })
-    })
+  const onlineMetricsUsd = {
+    totalUnitsSold: onlineTotalUnitsSold,
+    totalRevenue: onlineRevenue,
+    cogsDevices: onlineCogsDevices,
+    cogsLogistics: onlineCogsLogistics,
+    totalRepairCost: onlineTotalRepairCost,
+    otherExpenses: onlineOtherExpenses,
+    totalCost: onlineTotalCost,
+    grossProfit: onlineGrossProfit,
+    netProfit: onlineNetProfit,
+    roi: onlineRoi,
+    grossMarginPct: onlineGrossMarginPct,
+    netMarginPct: onlineNetMarginPct,
+    avgSellingPrice: onlineAvgSellingPrice,
+    avgCostPerUnit: onlineAvgCostPerUnit,
+    avgProfitPerUnit: onlineAvgProfitPerUnit,
+    platformBreakdown: {
+      amazon: platformStats.AMAZON,
+      revibe: platformStats.REVIBE
+    },
+    skuBreakdown
   }
 
-  const waterfallCycles = Object.values(cycleGroups).map(cg => {
-    const cashPoolDrawn = Math.max(0, cg.amexPurchases - cg.collectedCash)
-    const isAmexFullyPaid = cg.collectedCash >= cg.amexPurchases
-    return {
-      ...cg,
-      cashPoolDrawn,
-      isAmexFullyPaid,
-      settlementStatus: isAmexFullyPaid ? 'FULLY_SETTLED_BY_INVOICES' : 'CASH_POOL_BUFFER_DRAWN'
-    }
-  }).sort((a, b) => b.cycle.localeCompare(a.cycle))
+  const onlineMetricsAed = {
+    totalUnitsSold: onlineTotalUnitsSold,
+    totalRevenue: onlineRevenue * USD_TO_AED,
+    cogsDevices: onlineCogsDevices * USD_TO_AED,
+    cogsLogistics: onlineCogsLogistics * USD_TO_AED,
+    totalRepairCost: onlineTotalRepairCost * USD_TO_AED,
+    otherExpenses: onlineOtherExpenses * USD_TO_AED,
+    totalCost: onlineTotalCost * USD_TO_AED,
+    grossProfit: onlineGrossProfit * USD_TO_AED,
+    netProfit: onlineNetProfit * USD_TO_AED,
+    roi: onlineRoi,
+    grossMarginPct: onlineGrossMarginPct,
+    netMarginPct: onlineNetMarginPct,
+    avgSellingPrice: onlineAvgSellingPrice * USD_TO_AED,
+    avgCostPerUnit: onlineAvgCostPerUnit * USD_TO_AED,
+    avgProfitPerUnit: onlineAvgProfitPerUnit * USD_TO_AED,
+    platformBreakdown: {
+      amazon: {
+        ...platformStats.AMAZON,
+        revenue: platformStats.AMAZON.revenue * USD_TO_AED,
+        cogsDevices: platformStats.AMAZON.cogsDevices * USD_TO_AED,
+        cogsLogistics: platformStats.AMAZON.cogsLogistics * USD_TO_AED,
+        repairCost: platformStats.AMAZON.repairCost * USD_TO_AED,
+        otherExpenses: platformStats.AMAZON.otherExpenses * USD_TO_AED,
+        totalCost: platformStats.AMAZON.totalCost * USD_TO_AED,
+        grossProfit: platformStats.AMAZON.grossProfit * USD_TO_AED,
+        netProfit: platformStats.AMAZON.netProfit * USD_TO_AED
+      },
+      revibe: {
+        ...platformStats.REVIBE,
+        revenue: platformStats.REVIBE.revenue * USD_TO_AED,
+        cogsDevices: platformStats.REVIBE.cogsDevices * USD_TO_AED,
+        cogsLogistics: platformStats.REVIBE.cogsLogistics * USD_TO_AED,
+        repairCost: platformStats.REVIBE.repairCost * USD_TO_AED,
+        otherExpenses: platformStats.REVIBE.otherExpenses * USD_TO_AED,
+        totalCost: platformStats.REVIBE.totalCost * USD_TO_AED,
+        grossProfit: platformStats.REVIBE.grossProfit * USD_TO_AED,
+        netProfit: platformStats.REVIBE.netProfit * USD_TO_AED
+      }
+    },
+    skuBreakdown: skuBreakdown.map(sku => ({
+      ...sku,
+      revenue: sku.revenue * USD_TO_AED,
+      cogsDevices: sku.cogsDevices * USD_TO_AED,
+      logisticsCost: sku.logisticsCost * USD_TO_AED,
+      repairCost: sku.repairCost * USD_TO_AED,
+      totalCost: sku.totalCost * USD_TO_AED,
+      netProfit: sku.netProfit * USD_TO_AED,
+      avgPrice: sku.avgPrice * USD_TO_AED,
+      avgCost: sku.avgCost * USD_TO_AED,
+      profitPerUnit: sku.profitPerUnit * USD_TO_AED
+    }))
+  }
 
   return {
     usd: {
@@ -374,6 +562,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       inventoryAsset: inventoryValue + onlineUnsoldValue,
       inventoryAssetWholesale: inventoryValue,
       inventoryAssetOnline: onlineUnsoldValue,
+      onlineMetrics: onlineMetricsUsd,
       treasury: {
         amexLimit,
         amexStuck,
@@ -392,12 +581,11 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         accountsPayable,
         amexLiability,
         totalLiabilities,
-        partnerCapital,
+        partnerCapital: 0,
         retainedEarnings,
         totalEquity,
         isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 1
-      },
-      waterfallCycles
+      }
     },
     aed: {
       revenue: totalRevenue * USD_TO_AED,
@@ -422,6 +610,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       inventoryAsset: (inventoryValue + onlineUnsoldValue) * USD_TO_AED,
       inventoryAssetWholesale: inventoryValue * USD_TO_AED,
       inventoryAssetOnline: onlineUnsoldValue * USD_TO_AED,
+      onlineMetrics: onlineMetricsAed,
       treasury: {
         amexLimit: amexLimit * USD_TO_AED,
         amexStuck: amexStuck * USD_TO_AED,
@@ -440,22 +629,12 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
         accountsPayable: accountsPayable * USD_TO_AED,
         amexLiability: amexLiability * USD_TO_AED,
         totalLiabilities: totalLiabilities * USD_TO_AED,
-        partnerCapital: partnerCapital * USD_TO_AED,
+        partnerCapital: 0,
         retainedEarnings: retainedEarnings * USD_TO_AED,
         totalEquity: totalEquity * USD_TO_AED,
         isBalanced: Math.abs(totalAssets * USD_TO_AED - ((totalLiabilities + totalEquity) * USD_TO_AED)) < 1
-      },
-      waterfallCycles: waterfallCycles.map(c => ({
-        ...c,
-        amexPurchases: c.amexPurchases * USD_TO_AED,
-        collectedCash: c.collectedCash * USD_TO_AED,
-        totalInvoiced: c.totalInvoiced * USD_TO_AED,
-        openAR: c.openAR * USD_TO_AED,
-        cashPoolDrawn: c.cashPoolDrawn * USD_TO_AED
-      }))
+      }
     },
-    expenseHistory: opex || [],
-    partners: partners || [],
-    partnerTransactions: partnerTx || []
+    expenseHistory: opex || []
   }
 }

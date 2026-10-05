@@ -46,20 +46,21 @@ export default function DashboardHomeClient({ deals, settings, outstandingAR, su
     .reduce((s, d) => s + (Number(d.cash_amount) || Number(d.total_commitment)), 0)
 
   // 4. Net Profit
-  const netProfit = summary.usd.netProfit || 0
+  const netProfit = summary?.usd?.netProfit || 0
+  const onlineMetrics = summary?.usd?.onlineMetrics || { totalUnitsSold: 0, totalRevenue: 0, netProfit: 0, roi: 0 }
 
   // 5. Inventory Asset Value
-  const inventoryAsset = summary.usd.inventoryAsset || 0
+  const inventoryAsset = summary?.usd?.inventoryAsset || 0
   const activeInventoryUnits = inventoryItems.filter(i => i.status !== 'SOLD' && i.status !== 'RETURNED').length
 
   // 6. KPI Cards Config
   const kpiCards = [
     { label: 'Active Deals', value: activeDealsCount.toString(), sub: `${deals.length} total logged deals`, color: 'kpi-purple' },
-    { label: 'Amex Utilised', value: fmt(amexStuck), sub: `of ${fmt(settings.amex_limit)} limit`, color: 'kpi-blue' },
-    { label: 'Cash Deployed', value: fmt(cashStuck), sub: `of ${fmt(settings.cash_limit)} pool`, color: 'kpi-amber' },
-    { label: 'Net Profit (YTD)', value: fmt(netProfit), sub: 'Year to date profit', color: 'kpi-green' },
-    { label: 'Inventory Value', value: fmt(inventoryAsset), sub: `${activeInventoryUnits} units in stock`, color: 'kpi-indigo' },
-    { label: 'Outstanding A/R', value: fmt(outstandingAR), sub: 'Unpaid sales invoices', color: 'kpi-rose' },
+    { label: 'Online Units Sold', value: `${onlineMetrics.totalUnitsSold} units`, sub: `${fmt(onlineMetrics.totalRevenue)} online gross`, color: 'kpi-indigo' },
+    { label: 'Online Net Profit', value: fmt(onlineMetrics.netProfit), sub: `ROI: ${onlineMetrics.roi.toFixed(1)}%`, color: 'kpi-blue' },
+    { label: 'Total Net Profit (YTD)', value: fmt(netProfit), sub: 'Combined wholesale & online', color: 'kpi-green' },
+    { label: 'Inventory Value', value: fmt(inventoryAsset), sub: `${activeInventoryUnits} units in stock`, color: 'kpi-amber' },
+    { label: 'Outstanding A/R', value: fmt(outstandingAR), sub: 'Unpaid wholesale invoices', color: 'kpi-rose' },
   ]
 
   // Recent 5 Deals
@@ -88,9 +89,6 @@ export default function DashboardHomeClient({ deals, settings, outstandingAR, su
   if (nextCutoffDays !== null && nextCutoffDays <= 7) {
     alerts.push(`Upcoming Amex statement cutoff in ${nextCutoffDays} days (Deal ${upcomingAmexDeals[0].deal_number}).`)
   }
-
-  // Partner Balances (33.33% Profit Split)
-  const partnerShare = netProfit / 3
 
   // Inventory Top Models Summary
   const activeItems = inventoryItems.filter(i => i.status !== 'SOLD' && i.status !== 'RETURNED')
@@ -234,29 +232,32 @@ export default function DashboardHomeClient({ deals, settings, outstandingAR, su
           )}
         </div>
 
-        {/* Partner Balances */}
+        {/* Online Sales Performance */}
         <div className="module-card">
-          <div className="module-header">
-            <span className="module-icon">◑</span>
-            <h2 className="module-title">Partner Balances</h2>
+          <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="module-icon">🛒</span>
+              <h2 className="module-title">Online Sales (Amazon & Revibe)</h2>
+            </div>
+            <Link href="/dashboard/accounting" style={{ fontSize: '11px', color: 'var(--accent-purple)', textDecoration: 'none', fontWeight: 600 }}>
+              Full P&L →
+            </Link>
           </div>
-          <div className="partner-rows" style={{ marginTop: '12px' }}>
-            {[
-              { name: 'Muheeb', avatar: 'M' },
-              { name: 'Beshair', avatar: 'B' },
-              { name: 'Faisal', avatar: 'F' }
-            ].map((p) => (
-              <div key={p.name} className="partner-row">
-                <div className="partner-avatar">{p.avatar}</div>
-                <div className="partner-details">
-                  <span className="partner-name">{p.name}</span>
-                  <span className="partner-share">33.33% YTD Profit Share</span>
-                </div>
-                <div className="partner-balance" style={{ fontWeight: 600, color: partnerShare >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                  {fmt(partnerShare)}
-                </div>
-              </div>
-            ))}
+          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Total Units Sold</span>
+              <span style={{ fontWeight: 700, fontSize: '14px' }}>{onlineMetrics.totalUnitsSold} units</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Gross Online Sales</span>
+              <span style={{ fontWeight: 700, fontSize: '14px', color: '#38bdf8' }}>{fmt(onlineMetrics.totalRevenue)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Net Online Profit (ROI {onlineMetrics.roi.toFixed(1)}%)</span>
+              <span style={{ fontWeight: 700, fontSize: '14px', color: onlineMetrics.netProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                {fmt(onlineMetrics.netProfit)}
+              </span>
+            </div>
           </div>
         </div>
 

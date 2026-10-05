@@ -15,12 +15,10 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
   const supabase = await createClient()
   const [
     { data: datesData },
-    summary,
-    treasuryTransactions
+    summary
   ] = await Promise.all([
     supabase.from('deals').select('amex_statement_date').not('amex_statement_date', 'is', null),
-    getFinancialSummary(params.statement_date, params.from_date, params.to_date),
-    getTreasuryTransactions()
+    getFinancialSummary(params.statement_date, params.from_date, params.to_date)
   ])
   
   const statementDates = [...new Set((datesData || []).map(d => d.amex_statement_date).filter(Boolean))].sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())
@@ -29,9 +27,6 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
     <AccountingClient 
       summary={summary} 
       expenseHistory={summary.expenseHistory} 
-      partners={summary.partners || []}
-      partnerTransactions={summary.partnerTransactions || []}
-      treasuryTransactions={treasuryTransactions}
       statementDates={statementDates}
       selectedStatementDate={params.statement_date}
       fromDate={params.from_date}

@@ -49,8 +49,6 @@ export default function DashboardShell({ user, children }: Props) {
         { id: 'analytics-forecast', label: 'Procurement Forecast', href: '/dashboard/analytics?tab=forecast' }
       ]
     },
-    { id: 'partners', label: 'Partners', icon: '🤝', href: '/dashboard/partners', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
-    { id: 'finance', label: 'Treasury', icon: '🏦', href: '/dashboard/finance', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
     { id: 'admin', label: 'Admin', icon: '⚙️', href: '/dashboard/admin', roles: ['SUPER_ADMIN'] }
   ]
 
