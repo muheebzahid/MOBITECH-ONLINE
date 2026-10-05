@@ -84,6 +84,12 @@ export type FinancialSummary = {
   inventoryAsset: number
   inventoryAssetWholesale: number
   inventoryAssetOnline: number
+  opexByCategory?: Array<{
+    category: string
+    total: number
+    count: number
+    items: any[]
+  }>
   onlineMetrics?: OnlineFinancialMetrics
   treasury?: {
     amexLimit: number
@@ -147,6 +153,10 @@ export default function AccountingClient({
   const [refLink, setRefLink] = useState('')
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // OPEX category expand/collapse state
+  const [expandedOpexCategories, setExpandedOpexCategories] = useState<Record<string, boolean>>({})
+  const [expandAllOpex, setExpandAllOpex] = useState(false)
 
   // Edit Expense State
   const [editingExpense, setEditingExpense] = useState<any>(null)
@@ -890,39 +900,110 @@ export default function AccountingClient({
                 <span style={{ fontSize: '14px', fontWeight: 600 }}>+ {formatCurrency(data.amexProfit)}</span>
               </div>
 
-              {/* OPEX */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', marginTop: '8px' }}>
-                <span style={{ fontWeight: 600, fontSize: '15px' }}>Operating Expenses</span>
-              </div>
-              
-              {/* Individual expenses list */}
-              {(expenseHistory || []).map((exp) => {
-                const displayAmt = currency === 'usd' ? Number(exp.amount) : Number(exp.amount) * 3.674
-                return (
-                  <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '14px', paddingLeft: '16px', paddingBottom: '8px' }}>
-                    <span>
-                      {exp.description}{' '}
-                      {exp.reference_link ? (
-                        <a href={exp.reference_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px', color: 'var(--accent-purple)', marginLeft: '8px', textDecoration: 'underline' }}>
-                          🔗 Ref
-                        </a>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                          (No Ref)
-                        </span>
-                      )}
-                    </span>
-                    <span>- {formatCurrency(displayAmt)}</span>
+              {/* OPEX Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '15px' }}>Operating Expenses</span>
+                    {data.opexByCategory && data.opexByCategory.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandAllOpex(!expandAllOpex)}
+                        style={{
+                          fontSize: '11px',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {expandAllOpex ? 'Collapse All' : 'Expand All'}
+                      </button>
+                    )}
                   </div>
-                )
-              })}
-
-              {expenseHistory.length === 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', paddingBottom: '8px' }}>
-                  <span style={{ fontSize: '14px', paddingLeft: '16px' }}>General & Administrative</span>
-                  <span style={{ fontSize: '14px' }}>{formatCurrency(data.opex)}</span>
+                  <span style={{ fontWeight: 700, fontSize: '15px', color: '#f87171' }}>
+                    - {formatCurrency(data.opex)}
+                  </span>
                 </div>
-              )}
+
+                {/* Render Category Groupings */}
+                {data.opexByCategory && data.opexByCategory.length > 0 ? (
+                  data.opexByCategory.map(catGroup => {
+                    const isExpanded = expandAllOpex || !!expandedOpexCategories[catGroup.category]
+                    const categoryTitles: Record<string, string> = {
+                      'PAYROLL': '👥 Payroll & Salaries',
+                      'OFFICE_SUPPLIES': '🏢 Office Supplies & Rent',
+                      'SOFTWARE': '💻 Software & Subscriptions',
+                      'MARKETING': '📢 Marketing & Platform Fees',
+                      'OTHER': '📋 Other Administrative Expenses'
+                    }
+                    const title = categoryTitles[catGroup.category.toUpperCase()] || `📁 ${catGroup.category}`
+
+                    return (
+                      <div key={catGroup.category} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div 
+                          onClick={() => {
+                            setExpandedOpexCategories(prev => ({
+                              ...prev,
+                              [catGroup.category]: !prev[catGroup.category]
+                            }))
+                          }}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            userSelect: 'none'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '10px', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', display: 'inline-block' }}>▶</span>
+                            <span>{title}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>({catGroup.count} item{catGroup.count !== 1 ? 's' : ''})</span>
+                          </div>
+                          <span style={{ color: 'var(--text-primary)' }}>- {formatCurrency(catGroup.total)}</span>
+                        </div>
+
+                        {isExpanded && catGroup.items && (
+                          <div style={{ borderTop: '1px solid var(--border)', padding: '6px 12px 6px 28px', display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.1)' }}>
+                            {catGroup.items.map((item: any) => {
+                              const displayAmt = currency === 'usd' ? Number(item.amount || 0) : Number(item.amount || 0) * 3.674
+                              return (
+                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>{item.description}</span>
+                                    {item.expense_date && (
+                                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', opacity: 0.7 }}>
+                                        ({item.expense_date.split('T')[0]})
+                                      </span>
+                                    )}
+                                    {item.reference_link && (
+                                      <a href={item.reference_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: 'var(--accent-purple)', textDecoration: 'underline' }}>
+                                        🔗 Ref
+                                      </a>
+                                    )}
+                                  </div>
+                                  <span>- {formatCurrency(displayAmt)}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '14px', paddingLeft: '16px' }}>
+                    <span>General & Administrative</span>
+                    <span>- {formatCurrency(data.opex)}</span>
+                  </div>
+                )}
+              </div>
               
               <div style={{ borderBottom: '2px solid var(--border)', paddingBottom: '8px' }} />
 

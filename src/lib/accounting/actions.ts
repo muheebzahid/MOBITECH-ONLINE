@@ -335,7 +335,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       fetchedOpex.forEach((exp: any) => {
         const cat = String(exp.category || '').toUpperCase()
         const desc = String(exp.description || '').toLowerCase()
-        if (cat === 'MARKETING' || desc.includes('amazon') || desc.includes('revibe') || desc.includes('online')) {
+        if (cat === 'MARKETING' || desc.includes('amazon fba') || desc.includes('amazon seller') || desc.includes('revibe commission')) {
           onlineOtherExpenses += Number(exp.amount || 0)
         }
       })
@@ -346,7 +346,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   (['AMAZON', 'REVIBE'] as const).forEach(plat => {
     const p = platformStats[plat]
     p.totalCost = p.cogsDevices + p.cogsLogistics + p.repairCost + p.otherExpenses
-    p.grossProfit = p.revenue - (p.cogsDevices + p.cogsLogistics)
+    p.grossProfit = p.revenue - (p.cogsDevices + p.cogsLogistics + p.repairCost)
     p.netProfit = p.revenue - p.totalCost
     p.roi = p.totalCost > 0 ? (p.netProfit / p.totalCost) * 100 : 0
   })
@@ -369,7 +369,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   }).sort((a, b) => b.revenue - a.revenue)
 
   const onlineTotalCost = onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost + onlineOtherExpenses
-  const onlineGrossProfit = onlineRevenue - (onlineCogsDevices + onlineCogsLogistics)
+  const onlineGrossProfit = onlineRevenue - (onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost)
   const onlineNetProfit = onlineRevenue - onlineTotalCost
   const onlineRoi = onlineTotalCost > 0 ? (onlineNetProfit / onlineTotalCost) * 100 : 0
   const onlineGrossMarginPct = onlineRevenue > 0 ? (onlineGrossProfit / onlineRevenue) * 100 : 0
@@ -378,7 +378,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   const onlineAvgCostPerUnit = onlineTotalUnitsSold > 0 ? onlineTotalCost / onlineTotalUnitsSold : 0
   const onlineAvgProfitPerUnit = onlineTotalUnitsSold > 0 ? onlineNetProfit / onlineTotalUnitsSold : 0
 
-  const onlineCogs = onlineCogsDevices + onlineCogsLogistics
+  const onlineCogs = onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost
 
   const cogsDevices = wholesaleCogsDevices + onlineCogsDevices
   const cogsLogistics = wholesaleCogsLogistics + onlineCogsLogistics
@@ -421,10 +421,22 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
 
   let totalOpex = 0
   let opex: any[] = []
+  const opexByCategory: Record<string, { category: string, total: number, count: number, items: any[] }> = {}
+
   if (!statementDateFilter) {
     if (!opexErr && fetchedOpex) {
       opex = fetchedOpex
       totalOpex = fetchedOpex.reduce((sum, exp) => sum + Number(exp.amount), 0)
+
+      fetchedOpex.forEach((exp: any) => {
+        const cat = exp.category || 'OTHER'
+        if (!opexByCategory[cat]) {
+          opexByCategory[cat] = { category: cat, total: 0, count: 0, items: [] }
+        }
+        opexByCategory[cat].total += Number(exp.amount || 0)
+        opexByCategory[cat].count += 1
+        opexByCategory[cat].items.push(exp)
+      })
     }
   }
 
@@ -558,6 +570,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       amexProfit: amexProfit,
       freight: freightExpense,
       opex: totalOpex,
+      opexByCategory: Object.values(opexByCategory),
       netProfit: netProfit,
       inventoryAsset: inventoryValue + onlineUnsoldValue,
       inventoryAssetWholesale: inventoryValue,
@@ -606,6 +619,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       amexProfit: amexProfit * USD_TO_AED,
       freight: freightExpense * USD_TO_AED,
       opex: totalOpex * USD_TO_AED,
+      opexByCategory: Object.values(opexByCategory).map(c => ({ ...c, total: c.total * USD_TO_AED })),
       netProfit: netProfit * USD_TO_AED,
       inventoryAsset: (inventoryValue + onlineUnsoldValue) * USD_TO_AED,
       inventoryAssetWholesale: inventoryValue * USD_TO_AED,
