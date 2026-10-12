@@ -65,7 +65,8 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     .from('deals')
     .select(`
       id, quantity, unit_cost, auction_fee, other_fees, total_commitment, funding_source, amex_amount, cash_amount, cashback_amount, cashback_received, status, amex_statement_date,
-      shipment_deals ( shipments ( id, total_logistics_cost, shipment_deals ( deals ( quantity ) ) ) )
+      shipment_deals ( shipments ( id, total_logistics_cost, shipment_deals ( deals ( quantity ) ) ) ),
+      items:deal_items ( id, unit_cost, repair_cost, quantity )
     `)
   if (statementDateFilter) dealsQuery = dealsQuery.eq('amex_statement_date', statementDateFilter)
 
@@ -92,7 +93,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     invoicesQuery,
     onlineOrdersQuery,
     dealsQuery,
-    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(unit_cost), invoices!inner(id, status, issue_date, client_id)'),
+    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(unit_cost, repair_cost), invoices!inner(id, status, issue_date, client_id)'),
     supabase.from('invoice_line_items').select('quantity, deal_id, invoices!inner(status)'),
     supabase.from('inventory_items').select('id, unit_cost, logistics_cost, repair_cost, model, storage, grade, color, online_order_id, online_order_item_id, status, refurb_stage').not('online_order_id', 'is', null),
     supabase.from('shipments').select('total_logistics_cost'),
@@ -180,7 +181,13 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
 
   let wholesaleCogsDevices = 0
   let wholesaleCogsLogistics = 0
+  let wholesaleRepairCost = 0
   let wholesaleCogs = 0
+
+  const dealMap = new Map<string, any>()
+  if (deals) {
+    deals.forEach((d: any) => dealMap.set(d.id, d))
+  }
 
   activeLineItems.forEach((li: any) => {
     if (li.deal_id) {
@@ -188,10 +195,18 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       if (costs) {
         const itemUnitCost = li.deal_items?.unit_cost !== undefined ? Number(li.deal_items.unit_cost) : (costs.averageBaseCost - costs.dealFeePerUnit)
         const stockPlusFeeCost = itemUnitCost + costs.dealFeePerUnit
+        let itemRepairCost = Number(li.deal_items?.repair_cost || 0)
+        if (!itemRepairCost) {
+          const dealObj = dealMap.get(li.deal_id)
+          if (dealObj?.items?.length === 1) {
+            itemRepairCost = Number(dealObj.items[0]?.repair_cost || 0)
+          }
+        }
         
         wholesaleCogsDevices += li.quantity * stockPlusFeeCost
         wholesaleCogsLogistics += li.quantity * costs.shippingCostPerUnit
-        wholesaleCogs += li.quantity * (stockPlusFeeCost + costs.shippingCostPerUnit)
+        wholesaleRepairCost += li.quantity * itemRepairCost
+        wholesaleCogs += li.quantity * (stockPlusFeeCost + costs.shippingCostPerUnit + itemRepairCost)
         
         amexProfit += li.quantity * (costs.amexProfitPerUnit || 0)
       }
@@ -405,7 +420,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       const unsoldQty = Math.max(0, (deal.quantity || 0) - soldQty)
       const costs = dealCosts[deal.id]
       if (costs && unsoldQty > 0) {
-        const unitTotalCost = costs.averageBaseCost + costs.shippingCostPerUnit
+        const dealRepairCost = (deal.items || []).reduce((sum: number, it: any) => sum + (Number(it.repair_cost || 0) * (Number(it.quantity) || 0)), 0)
+        const dealRepairCostPerUnit = (deal.quantity || 0) > 0 ? (dealRepairCost / deal.quantity) : 0
+        const unitTotalCost = costs.averageBaseCost + costs.shippingCostPerUnit + dealRepairCostPerUnit
         inventoryValue += unsoldQty * unitTotalCost
       }
     })
@@ -562,6 +579,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       cogsLogistics: cogsLogistics,
       wholesaleCogsDevices,
       wholesaleCogsLogistics,
+      wholesaleRepairCost,
       onlineCogsDevices,
       onlineCogsLogistics,
       grossProfit: grossProfit,
@@ -611,6 +629,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       cogsLogistics: cogsLogistics * USD_TO_AED,
       wholesaleCogsDevices: wholesaleCogsDevices * USD_TO_AED,
       wholesaleCogsLogistics: wholesaleCogsLogistics * USD_TO_AED,
+      wholesaleRepairCost: wholesaleRepairCost * USD_TO_AED,
       onlineCogsDevices: onlineCogsDevices * USD_TO_AED,
       onlineCogsLogistics: onlineCogsLogistics * USD_TO_AED,
       grossProfit: grossProfit * USD_TO_AED,

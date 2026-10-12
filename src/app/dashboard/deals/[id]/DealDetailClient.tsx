@@ -906,7 +906,7 @@ export default function DealDetailClient({ deal }: Props) {
 
                     const unitBidCost = Number(item.unit_cost || 0)
                     const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
-                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
+                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                     const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -1123,9 +1123,12 @@ export default function DealDetailClient({ deal }: Props) {
                               const shipment = deal.shipment_deals?.[0]?.shipments
                               const totalShipmentUnits = shipment ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0) : 0
                               const shippingCostPerUnit = totalShipmentUnits > 0 ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits) : 0
-                              const dealFeePerUnit = deal.quantity > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / deal.quantity) : 0
+                              const salesTotalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
+                              const salesBidTotal = Number(deal.total_commitment || 0) - salesTotalFees
+                              const salesFeeRate = salesBidTotal > 0 ? salesTotalFees / salesBidTotal : 0
                               const unitBidCost = Number(item.unit_cost || 0)
-                              const totalCostPerUnit = unitBidCost + dealFeePerUnit + shippingCostPerUnit
+                              const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
+                              const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
                               const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                               pureNetProfit += (totalSalesRevenue - (qtySold * totalCostPerUnit))
                             }

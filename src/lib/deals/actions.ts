@@ -42,7 +42,9 @@ function enrichDealFinancials(deal: any) {
   }
 
   const totalCogs = activeLineItems.reduce((sum: number, li: any) => {
-    return sum + (li.quantity || 0) * (getSkuStockPlusFee(li) + shippingCostPerUnit)
+    const matchedItem = (deal.items || []).find((it: any) => it.id === li.deal_item_id || (!li.deal_item_id && deal.items?.length === 1))
+    const repairCostPerUnit = Number(matchedItem?.repair_cost || 0)
+    return sum + (li.quantity || 0) * (getSkuStockPlusFee(li) + shippingCostPerUnit + repairCostPerUnit)
   }, 0)
 
   // Amex Profit based on paid-in-full units
@@ -724,11 +726,12 @@ export async function updateDeal(dealId: string, formData: FormData) {
         await supabase.from('deal_items').insert(itemData)
       }
 
-      // Propagate unit_cost and logistics_cost to inventory_items scanned under this SKU
+      // Propagate unit_cost, logistics_cost and repair_cost to inventory_items scanned under this SKU
       let query = supabase.from('inventory_items')
         .update({
           unit_cost: parseFloat(i.unit_cost) || 0,
-          logistics_cost: shippingCostPerUnit
+          logistics_cost: shippingCostPerUnit,
+          repair_cost: parseFloat(i.repair_cost) || 0
         })
         .eq('deal_id', dealId)
         .eq('model', i.model)
@@ -748,6 +751,9 @@ export async function updateDeal(dealId: string, formData: FormData) {
       old_value: `${dbItemIds.length} items`,
       new_value: `${items.length} items`,
     })
+
+    // Automatically recalculate deal revenue, cogs, and profit
+    await syncDealSoldStatus(dealId)
   }
 
   // Log edit history
@@ -762,6 +768,7 @@ export async function updateDeal(dealId: string, formData: FormData) {
 
   revalidatePath('/dashboard/deals')
   revalidatePath(`/dashboard/deals/${dealId}`)
+  revalidatePath('/dashboard/accounting')
   return { success: true, changesCount: field_changes.length }
 }
 
@@ -1039,7 +1046,7 @@ export async function moveSkuToOnlineInventory(
     model: origItem.model,
     storage: origItem.storage,
     grade: origItem.grade,
-    unit_cost: totalLandedCost, // Inherit landed cost
+    unit_cost: Math.max(0, totalLandedCost - Number(origItem.repair_cost || 0)), // Base landed cost without repair to avoid double-counting with repair_cost
     logistics_cost: 0, 
     repair_cost: Number(origItem.repair_cost || 0),
     status: 'AVAILABLE',

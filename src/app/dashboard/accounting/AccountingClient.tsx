@@ -72,6 +72,7 @@ export type FinancialSummary = {
   cogsLogistics: number
   wholesaleCogsDevices: number
   wholesaleCogsLogistics: number
+  wholesaleRepairCost?: number
   onlineCogsDevices: number
   onlineCogsLogistics: number
   grossProfit: number
@@ -481,6 +482,7 @@ export default function AccountingClient({
                   ['Wholesale Sales (Deals) Revenue', data.revenueWholesale],
                   ['Less: Cost of Goods (Deals)', data.wholesaleCogsDevices],
                   ['Less: Logistics Cost (Deals)', data.wholesaleCogsLogistics],
+                  ...((data.wholesaleRepairCost || 0) > 0 ? [['Less: Repair Cost (Deals)', data.wholesaleRepairCost || 0]] : []),
                   ['Wholesale Gross Profit', data.grossProfitWholesale],
                   ['Online Sales Revenue', data.revenueOnline],
                   ['Less: Cost of Goods (Online Base Stock)', om.cogsDevices],
@@ -832,6 +834,12 @@ export default function AccountingClient({
                   <span>Less: Logistics Cost (Deals Freight Allocation)</span>
                   <span>- {formatCurrency(data.wholesaleCogsLogistics)}</span>
                 </div>
+                {(data.wholesaleRepairCost || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+                    <span>Less: Repair Cost (Deals Repair Allocation)</span>
+                    <span>- {formatCurrency(data.wholesaleRepairCost || 0)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '14px', borderTop: '1px dashed var(--border)', paddingTop: '4px', color: 'var(--accent-blue)' }}>
                   <span>Wholesale Gross Profit</span>
                   <span>{formatCurrency(data.grossProfitWholesale)}</span>
