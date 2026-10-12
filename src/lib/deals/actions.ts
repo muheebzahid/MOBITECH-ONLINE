@@ -686,10 +686,10 @@ export async function updateDeal(dealId: string, formData: FormData) {
       await supabase.from('deal_items').delete().in('id', idsToDelete)
     }
 
-    // Fetch shipment details to compute pro-rated shipping cost
+    // Fetch shipment details and deal fees to compute pro-rated shipping cost and fee rate
     const { data: dealRec } = await supabase
       .from('deals')
-      .select('shipment_deals(shipments(sb_fee, freight_cost, duty_amount, turbo_fee, shipment_deals(deals(quantity))))')
+      .select('auction_fee, other_fees, total_commitment, shipment_deals(shipments(sb_fee, freight_cost, duty_amount, turbo_fee, shipment_deals(deals(quantity))))')
       .eq('id', dealId)
       .single()
       
@@ -703,9 +703,17 @@ export async function updateDeal(dealId: string, formData: FormData) {
       const totalShipmentUnits = shipmentObj.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0
       shippingCostPerUnit = totalShipmentUnits > 0 ? (totalLogisticsCost / totalShipmentUnits) : 0
     }
+
+    const skuTotalFees = Number(dealRec?.auction_fee || 0) + Number(dealRec?.other_fees || 0)
+    const skuBidTotal = Number(dealRec?.total_commitment || 0) - skuTotalFees
+    const feeRate = skuBidTotal > 0 ? skuTotalFees / skuBidTotal : 0
     
     // Update or Insert items
     for (const i of items) {
+      const skuUnitCost = parseFloat(i.unit_cost) || 0
+      const skuRepairCost = parseFloat(i.repair_cost) || 0
+      const stockPlusFeeCost = Number((skuUnitCost * (1 + feeRate)).toFixed(2))
+
       const itemData = {
         deal_id: dealId,
         model: i.model,
@@ -714,25 +722,33 @@ export async function updateDeal(dealId: string, formData: FormData) {
         color: i.color || null,
         carrier: i.carrier || null,
         quantity: parseInt(i.quantity) || 0,
-        unit_cost: parseFloat(i.unit_cost) || 0,
-        repair_cost: parseFloat(i.repair_cost) || 0
+        unit_cost: skuUnitCost,
+        repair_cost: skuRepairCost
       }
       
+      let itemId = i.id
       if (i.id && dbItemIds.includes(i.id)) {
         // Update existing item
         await supabase.from('deal_items').update(itemData).eq('id', i.id)
       } else {
         // Insert new item
-        await supabase.from('deal_items').insert(itemData)
+        const { data: insertedItem } = await supabase.from('deal_items').insert(itemData).select('id').single()
+        itemId = insertedItem?.id || itemId
       }
 
       // Propagate unit_cost, logistics_cost and repair_cost to inventory_items scanned under this SKU
+      // RULE: If deal SKU has an added repair_cost (> 0), it overrides/removes manual online repair costs.
+      // If deal SKU has no repair cost added (== 0), whatever is added in online inventory is preserved.
+      const invPayload: any = {
+        unit_cost: stockPlusFeeCost,
+        logistics_cost: Number(shippingCostPerUnit.toFixed(2))
+      }
+      if (skuRepairCost > 0) {
+        invPayload.repair_cost = skuRepairCost
+      }
+
       let query = supabase.from('inventory_items')
-        .update({
-          unit_cost: parseFloat(i.unit_cost) || 0,
-          logistics_cost: shippingCostPerUnit,
-          repair_cost: parseFloat(i.repair_cost) || 0
-        })
+        .update(invPayload)
         .eq('deal_id', dealId)
         .eq('model', i.model)
         
@@ -743,6 +759,16 @@ export async function updateDeal(dealId: string, formData: FormData) {
       else query = query.is('grade', null)
       
       await query
+
+      // Sync internal transfer invoice line items for this SKU to match new landed cost
+      const totalSkuLandedCost = Number((stockPlusFeeCost + shippingCostPerUnit + skuRepairCost).toFixed(2))
+      if (itemId) {
+        await supabase.from('invoice_line_items')
+          .update({ unit_price: totalSkuLandedCost })
+          .eq('deal_id', dealId)
+          .eq('deal_item_id', itemId)
+          .ilike('description', '%Moved to online inventory%')
+      }
     }
     
     field_changes.push({
@@ -1027,18 +1053,33 @@ export async function moveSkuToOnlineInventory(
     invoiceId = invoice.id
   }
 
-  // Create invoice line item
-  const { error: lineError } = await supabase
-    .from('invoice_line_items')
-    .insert({
-      invoice_id: invoiceId,
-      deal_id: dealId,
-      deal_item_id: dealItemId,
-      description: `Moved to online inventory: ${originalModel}`,
-      quantity: quantityToMove,
-      unit_price: totalLandedCost
-    })
-  if (lineError) return { error: lineError.message }
+    // Create invoice line item
+    const { error: lineError } = await supabase
+      .from('invoice_line_items')
+      .insert({
+        invoice_id: invoiceId,
+        deal_id: dealId,
+        deal_item_id: dealItemId,
+        description: `Moved to online inventory: ${originalModel}`,
+        quantity: quantityToMove,
+        unit_price: totalLandedCost
+      })
+    if (lineError) return { error: lineError.message }
+
+    // Recalculate invoice totals
+    const { data: invLines } = await supabase
+      .from('invoice_line_items')
+      .select('quantity, unit_price')
+      .eq('invoice_id', invoiceId)
+
+    if (invLines) {
+      const subtotal = invLines.reduce((sum, li) => sum + (Number(li.quantity || 0) * Number(li.unit_price || 0)), 0)
+      await supabase.from('invoices').update({
+        subtotal: Number(subtotal.toFixed(2)),
+        total_amount: Number(subtotal.toFixed(2)),
+        balance_due: Number(subtotal.toFixed(2))
+      }).eq('id', invoiceId)
+    }
 
   // 4. Generate Inventory Items for Refurbishment Pipeline
   const itemsToInsert = Array.from({ length: quantityToMove }).map(() => ({

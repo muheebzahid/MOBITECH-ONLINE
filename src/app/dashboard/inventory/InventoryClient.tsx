@@ -134,13 +134,15 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
   const maxQty = selectedItem?.availableQty || 1
 
   // Compute landed cost the same way DealDetailClient does:
-  // item.unit_cost + pro-rated (auction_fee + other_fees) / deal.quantity + pro-rated shipping
+  // stockPlusFeeCost + shippingCostPerUnit + repair_cost
   const totalLandedCost = (() => {
     if (!selectedDeal || !selectedItem) return 0
     const itemUnitCost = Number(selectedItem.unit_cost || 0)
-    const dealFeePerUnit = (selectedDeal.quantity || 0) > 0
-      ? ((Number(selectedDeal.auction_fee || 0) + Number(selectedDeal.other_fees || 0)) / selectedDeal.quantity)
-      : 0
+    const skuTotalFees = Number(selectedDeal.auction_fee || 0) + Number(selectedDeal.other_fees || 0)
+    const skuBidTotal = Number(selectedDeal.total_commitment || 0) - skuTotalFees
+    const skuFeeRate = skuBidTotal > 0 ? skuTotalFees / skuBidTotal : 0
+    const stockPlusFeeCost = itemUnitCost * (1 + skuFeeRate)
+
     const shipment = selectedDeal.shipment_deals?.[0]?.shipments
     const totalShipmentUnits = shipment
       ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0)
@@ -148,7 +150,7 @@ export default function InventoryClient({ inventory, activeDeals = [], inventory
     const shippingCostPerUnit = totalShipmentUnits > 0
       ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits)
       : 0
-    return itemUnitCost + dealFeePerUnit + shippingCostPerUnit
+    return stockPlusFeeCost + shippingCostPerUnit + Number(selectedItem.repair_cost || 0)
   })()
 
   const filteredDealsList = dealsWithAvailable.filter(d => {
