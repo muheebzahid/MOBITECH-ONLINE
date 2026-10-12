@@ -1108,100 +1108,219 @@ export default function DealDetailClient({ deal }: Props) {
                     )
                   })()}
 
-                  <tr>
-                    <td colSpan={8} style={{paddingLeft:16, textAlign:'right', fontWeight:700, color:'var(--text-muted)', fontSize:'12px'}}>
-                      <div style={{ display: 'flex', gap: '20px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span>TOTAL REVENUE: <strong style={{ color: 'var(--text)' }}>{fmtS(deal.total_revenue || 0)}</strong></span>
-                        {(() => {
-                          const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * getLineItemStockPlusFee(li) * amexProfitMultiplier * 0.02), 0)
-                          
-                          let pureNetProfit = 0
-                          let totalStockPlusFee = 0
-                          let totalRepairCost = 0
-                          let totalShippingCost = 0
-
-                          deal.items.forEach((item: any) => {
-                            const skuSales = (deal.invoice_line_items || []).filter((li: any) => li.deal_item_id === item.id || (!li.deal_item_id && deal.items.length === 1))
-                            const qtySold = skuSales.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
-                            if (qtySold > 0) {
-                              const shipment = deal.shipment_deals?.[0]?.shipments
-                              const totalShipmentUnits = shipment ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0) : 0
-                              const shippingCostPerUnit = totalShipmentUnits > 0 ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits) : 0
-                              const salesTotalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
-                              const salesBidTotal = Number(deal.total_commitment || 0) - salesTotalFees
-                              const salesFeeRate = salesBidTotal > 0 ? salesTotalFees / salesBidTotal : 0
-                              const unitBidCost = Number(item.unit_cost || 0)
-                              const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
-                              const repairCostPerUnit = Number(item.repair_cost || 0)
-                              const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + repairCostPerUnit
-                              const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
-                              
-                              totalStockPlusFee += (qtySold * stockPlusFeeCost)
-                              totalRepairCost += (qtySold * repairCostPerUnit)
-                              totalShippingCost += (qtySold * shippingCostPerUnit)
-                              pureNetProfit += (totalSalesRevenue - (qtySold * totalCostPerUnit))
-                            }
-                          })
-                          if (deal.items.length > 1) {
-                            const unattributedSales = (deal.invoice_line_items || []).filter((li: any) => !li.deal_item_id)
-                            const unattributedQty = unattributedSales.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
-                            if (unattributedQty > 0) {
-                              const dealFeePerUnit = deal.quantity > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / deal.quantity) : 0
-                              const shipment = deal.shipment_deals?.[0]?.shipments
-                              const totalShipmentUnits = shipment ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0) : 0
-                              const shippingCostPerUnit = totalShipmentUnits > 0 ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits) : 0
-                              const stockPlusFee = (deal.unit_cost || 0) + dealFeePerUnit
-                              const totalCostPerUnit = stockPlusFee + shippingCostPerUnit
-                              const unattributedTotalRevenue = unattributedSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
-                              
-                              totalStockPlusFee += (unattributedQty * stockPlusFee)
-                              totalShippingCost += (unattributedQty * shippingCostPerUnit)
-                              pureNetProfit += (unattributedTotalRevenue - (unattributedQty * totalCostPerUnit))
-                            }
-                          }
-
-                          const dealTotalRepairCost = deal.items.reduce((sum: number, it: any) => sum + ((it.quantity || 0) * Number(it.repair_cost || 0)), 0)
-                          const dealTotalCommitment = Number(deal.total_commitment || 0)
-
-                          return (
-                            <>
-                              <span title={dealTotalRepairCost > totalRepairCost ? `Sold: ${fmtS(totalRepairCost)} (Deal Batch Total: ${fmtS(dealTotalRepairCost)})` : undefined}>
-                                TOTAL REPAIR COST: <strong style={{ color: 'var(--accent-orange)' }}>{fmtS(totalRepairCost)}</strong>
-                              </span>
-                              <span title={dealTotalCommitment > totalStockPlusFee ? `Sold: ${fmtS(totalStockPlusFee)} (Deal Batch Total: ${fmtS(dealTotalCommitment)})` : undefined}>
-                                TOTAL STOCK + FEE COST: <strong style={{ color: 'var(--text)' }}>{fmtS(totalStockPlusFee)}</strong>
-                              </span>
-                              <span>TOTAL NET PROFIT: <strong style={{ color: pureNetProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)' }}>{fmtS(pureNetProfit)}</strong></span>
-                              {amexProfitMultiplier > 0 && (
-                                <>
-                                  <span>TOTAL AMEX PROFIT: <strong style={{ color: 'var(--accent-purple)' }}>{fmtS(totalAmexProfit)}</strong></span>
-                                  <span>COMBINED PROFIT: <strong style={{ color: (pureNetProfit + totalAmexProfit) >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)' }}>{fmtS(pureNetProfit + totalAmexProfit)}</strong></span>
-                                </>
-                              )}
-                            </>
-                          )
-                        })()}
-                        <span>REMAINING QTY:</span>
-                      </div>
-                    </td>
-                    <td style={{textAlign:'right', fontWeight:700, fontSize:'14px'}}>
+                  <tr style={{ background: 'var(--bg-card)', borderTop: '2px solid var(--border)' }}>
+                    <td colSpan={10} style={{ padding: '16px' }}>
                       {(() => {
+                        const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * getLineItemStockPlusFee(li) * amexProfitMultiplier * 0.02), 0)
+                        
+                        let pureNetProfit = 0
+                        let totalStockPlusFee = 0
+                        let totalRepairCost = 0
+                        let totalShippingCost = 0
+
+                        deal.items.forEach((item: any) => {
+                          const skuSales = (deal.invoice_line_items || []).filter((li: any) => li.deal_item_id === item.id || (!li.deal_item_id && deal.items.length === 1))
+                          const qtySold = skuSales.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+                          if (qtySold > 0) {
+                            const shipment = deal.shipment_deals?.[0]?.shipments
+                            const totalShipmentUnits = shipment ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0) : 0
+                            const shippingCostPerUnit = totalShipmentUnits > 0 ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits) : 0
+                            const salesTotalFees = Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)
+                            const salesBidTotal = Number(deal.total_commitment || 0) - salesTotalFees
+                            const salesFeeRate = salesBidTotal > 0 ? salesTotalFees / salesBidTotal : 0
+                            const unitBidCost = Number(item.unit_cost || 0)
+                            const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
+                            const repairCostPerUnit = Number(item.repair_cost || 0)
+                            const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + repairCostPerUnit
+                            const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
+                            
+                            totalStockPlusFee += (qtySold * stockPlusFeeCost)
+                            totalRepairCost += (qtySold * repairCostPerUnit)
+                            totalShippingCost += (qtySold * shippingCostPerUnit)
+                            pureNetProfit += (totalSalesRevenue - (qtySold * totalCostPerUnit))
+                          }
+                        })
+                        if (deal.items.length > 1) {
+                          const unattributedSales = (deal.invoice_line_items || []).filter((li: any) => !li.deal_item_id)
+                          const unattributedQty = unattributedSales.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
+                          if (unattributedQty > 0) {
+                            const dealFeePerUnit = deal.quantity > 0 ? ((Number(deal.auction_fee || 0) + Number(deal.other_fees || 0)) / deal.quantity) : 0
+                            const shipment = deal.shipment_deals?.[0]?.shipments
+                            const totalShipmentUnits = shipment ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0) : 0
+                            const shippingCostPerUnit = totalShipmentUnits > 0 ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits) : 0
+                            const stockPlusFee = (deal.unit_cost || 0) + dealFeePerUnit
+                            const totalCostPerUnit = stockPlusFee + shippingCostPerUnit
+                            const unattributedTotalRevenue = unattributedSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
+                            
+                            totalStockPlusFee += (unattributedQty * stockPlusFee)
+                            totalShippingCost += (unattributedQty * shippingCostPerUnit)
+                            pureNetProfit += (unattributedTotalRevenue - (unattributedQty * totalCostPerUnit))
+                          }
+                        }
+
+                        const dealTotalRepairCost = deal.items.reduce((sum: number, it: any) => sum + ((it.quantity || 0) * Number(it.repair_cost || 0)), 0)
+                        const dealTotalCommitment = Number(deal.total_commitment || 0)
+
                         const totalSkuRemaining = deal.items.reduce((total: number, item: any) => {
                           const qtySold = (deal.invoice_line_items || []).filter((li: any) => li.deal_item_id === item.id || (!li.deal_item_id && deal.items.length === 1)).reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
                           return total + Math.max(0, (item.quantity || 0) - qtySold)
                         }, 0)
                         
+                        let finalRemaining = totalSkuRemaining
                         if (deal.items.length > 1) {
                           const unattributedQty = (deal.invoice_line_items || [])
                             .filter((li: any) => !li.deal_item_id)
                             .reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
-                          return Math.max(0, totalSkuRemaining - unattributedQty)
+                          finalRemaining = Math.max(0, totalSkuRemaining - unattributedQty)
                         }
-                        
-                        return totalSkuRemaining
+
+                        return (
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: amexProfitMultiplier > 0 ? 'repeat(auto-fit, minmax(150px, 1fr))' : 'repeat(auto-fit, minmax(160px, 1fr))',
+                            gap: '12px',
+                            width: '100%',
+                            alignItems: 'stretch'
+                          }}>
+                            {/* Total Revenue */}
+                            <div style={{
+                              background: 'var(--bg)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px'
+                            }}>
+                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Total Revenue
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
+                                {fmtS(deal.total_revenue || 0)}
+                              </span>
+                            </div>
+
+                            {/* Total Repair Cost */}
+                            <div 
+                              title={dealTotalRepairCost > totalRepairCost ? `Sold: ${fmtS(totalRepairCost)} (Deal Batch Total: ${fmtS(dealTotalRepairCost)})` : undefined}
+                              style={{
+                                background: 'rgba(249, 115, 22, 0.06)',
+                                border: '1px solid rgba(249, 115, 22, 0.25)',
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                              }}
+                            >
+                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--accent-orange)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Total Repair Cost
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-orange)' }}>
+                                {fmtS(totalRepairCost)}
+                              </span>
+                            </div>
+
+                            {/* Total Stock + Fee Cost */}
+                            <div 
+                              title={dealTotalCommitment > totalStockPlusFee ? `Sold: ${fmtS(totalStockPlusFee)} (Deal Batch Total: ${fmtS(dealTotalCommitment)})` : undefined}
+                              style={{
+                                background: 'var(--bg)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                              }}
+                            >
+                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Stock + Fee Cost
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
+                                {fmtS(totalStockPlusFee)}
+                              </span>
+                            </div>
+
+                            {/* Total Net Profit */}
+                            <div style={{
+                              background: pureNetProfit >= 0 ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)',
+                              border: `1px solid ${pureNetProfit >= 0 ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px'
+                            }}>
+                              <span style={{ fontSize: '10px', fontWeight: 600, color: pureNetProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Total Net Profit
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: pureNetProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)' }}>
+                                {fmtS(pureNetProfit)}
+                              </span>
+                            </div>
+
+                            {/* Total Amex Profit */}
+                            {amexProfitMultiplier > 0 && (
+                              <div style={{
+                                background: 'rgba(168, 85, 247, 0.06)',
+                                border: '1px solid rgba(168, 85, 247, 0.25)',
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                              }}>
+                                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  Total Amex Profit
+                                </span>
+                                <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-purple)' }}>
+                                  {fmtS(totalAmexProfit)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Combined Profit */}
+                            {amexProfitMultiplier > 0 && (
+                              <div style={{
+                                background: (pureNetProfit + totalAmexProfit) >= 0 ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                border: `1px solid ${(pureNetProfit + totalAmexProfit) >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                              }}>
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: (pureNetProfit + totalAmexProfit) >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  Combined Profit
+                                </span>
+                                <span style={{ fontSize: '16px', fontWeight: 800, color: (pureNetProfit + totalAmexProfit) >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)' }}>
+                                  {fmtS(pureNetProfit + totalAmexProfit)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Remaining Qty */}
+                            <div style={{
+                              background: 'var(--bg)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px'
+                            }}>
+                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Remaining Qty
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: finalRemaining === 0 ? 'var(--text-muted)' : 'var(--accent-blue)' }}>
+                                {finalRemaining} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                              </span>
+                            </div>
+                          </div>
+                        )
                       })()}
                     </td>
-                    <td></td>
                   </tr>
                 </tbody>
               </table>
