@@ -1109,13 +1109,17 @@ export default function DealDetailClient({ deal }: Props) {
                   })()}
 
                   <tr>
-                    <td colSpan={7} style={{paddingLeft:16, textAlign:'right', fontWeight:700, color:'var(--text-muted)', fontSize:'12px'}}>
-                      <div style={{ display: 'flex', gap: '24px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                    <td colSpan={8} style={{paddingLeft:16, textAlign:'right', fontWeight:700, color:'var(--text-muted)', fontSize:'12px'}}>
+                      <div style={{ display: 'flex', gap: '20px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span>TOTAL REVENUE: <strong style={{ color: 'var(--text)' }}>{fmtS(deal.total_revenue || 0)}</strong></span>
                         {(() => {
                           const totalAmexProfit = (deal.invoice_line_items || []).filter((li: any) => li.invoices?.status === 'PAID').reduce((sum: number, li: any) => sum + ((li.quantity || 0) * getLineItemStockPlusFee(li) * amexProfitMultiplier * 0.02), 0)
                           
                           let pureNetProfit = 0
+                          let totalStockPlusFee = 0
+                          let totalRepairCost = 0
+                          let totalShippingCost = 0
+
                           deal.items.forEach((item: any) => {
                             const skuSales = (deal.invoice_line_items || []).filter((li: any) => li.deal_item_id === item.id || (!li.deal_item_id && deal.items.length === 1))
                             const qtySold = skuSales.reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
@@ -1128,8 +1132,13 @@ export default function DealDetailClient({ deal }: Props) {
                               const salesFeeRate = salesBidTotal > 0 ? salesTotalFees / salesBidTotal : 0
                               const unitBidCost = Number(item.unit_cost || 0)
                               const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
-                              const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
+                              const repairCostPerUnit = Number(item.repair_cost || 0)
+                              const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + repairCostPerUnit
                               const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
+                              
+                              totalStockPlusFee += (qtySold * stockPlusFeeCost)
+                              totalRepairCost += (qtySold * repairCostPerUnit)
+                              totalShippingCost += (qtySold * shippingCostPerUnit)
                               pureNetProfit += (totalSalesRevenue - (qtySold * totalCostPerUnit))
                             }
                           })
@@ -1141,14 +1150,27 @@ export default function DealDetailClient({ deal }: Props) {
                               const shipment = deal.shipment_deals?.[0]?.shipments
                               const totalShipmentUnits = shipment ? (shipment.shipment_deals?.reduce((sum: number, sd: any) => sum + (sd.deals?.quantity || 0), 0) || 0) : 0
                               const shippingCostPerUnit = totalShipmentUnits > 0 ? (Number(shipment.total_logistics_cost || 0) / totalShipmentUnits) : 0
-                              const totalCostPerUnit = (deal.unit_cost || 0) + dealFeePerUnit + shippingCostPerUnit
+                              const stockPlusFee = (deal.unit_cost || 0) + dealFeePerUnit
+                              const totalCostPerUnit = stockPlusFee + shippingCostPerUnit
                               const unattributedTotalRevenue = unattributedSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
+                              
+                              totalStockPlusFee += (unattributedQty * stockPlusFee)
+                              totalShippingCost += (unattributedQty * shippingCostPerUnit)
                               pureNetProfit += (unattributedTotalRevenue - (unattributedQty * totalCostPerUnit))
                             }
                           }
 
+                          const dealTotalRepairCost = deal.items.reduce((sum: number, it: any) => sum + ((it.quantity || 0) * Number(it.repair_cost || 0)), 0)
+                          const dealTotalCommitment = Number(deal.total_commitment || 0)
+
                           return (
                             <>
+                              <span title={dealTotalRepairCost > totalRepairCost ? `Sold: ${fmtS(totalRepairCost)} (Deal Batch Total: ${fmtS(dealTotalRepairCost)})` : undefined}>
+                                TOTAL REPAIR COST: <strong style={{ color: 'var(--accent-orange)' }}>{fmtS(totalRepairCost)}</strong>
+                              </span>
+                              <span title={dealTotalCommitment > totalStockPlusFee ? `Sold: ${fmtS(totalStockPlusFee)} (Deal Batch Total: ${fmtS(dealTotalCommitment)})` : undefined}>
+                                TOTAL STOCK + FEE COST: <strong style={{ color: 'var(--text)' }}>{fmtS(totalStockPlusFee)}</strong>
+                              </span>
                               <span>TOTAL NET PROFIT: <strong style={{ color: pureNetProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-rose)' }}>{fmtS(pureNetProfit)}</strong></span>
                               {amexProfitMultiplier > 0 && (
                                 <>
@@ -1179,6 +1201,7 @@ export default function DealDetailClient({ deal }: Props) {
                         return totalSkuRemaining
                       })()}
                     </td>
+                    <td></td>
                   </tr>
                 </tbody>
               </table>
