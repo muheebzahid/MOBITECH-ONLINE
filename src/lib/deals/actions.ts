@@ -230,7 +230,11 @@ export async function createDeal(formData: FormData) {
       unit_cost: parseFloat(i.unit_cost) || 0,
       repair_cost: parseFloat(i.repair_cost) || 0
     }))
-    await supabase.from('deal_items').insert(itemsToInsert)
+    const { error: diErr } = await supabase.from('deal_items').insert(itemsToInsert)
+    if (diErr && diErr.message?.includes('repair_cost')) {
+      const fallbackItems = itemsToInsert.map(({ repair_cost, ...rest }) => rest)
+      await supabase.from('deal_items').insert(fallbackItems)
+    }
   }
 
   // Log status history
@@ -729,11 +733,21 @@ export async function updateDeal(dealId: string, formData: FormData) {
       let itemId = i.id
       if (i.id && dbItemIds.includes(i.id)) {
         // Update existing item
-        await supabase.from('deal_items').update(itemData).eq('id', i.id)
+        const { error: updErr } = await supabase.from('deal_items').update(itemData).eq('id', i.id)
+        if (updErr && updErr.message?.includes('repair_cost')) {
+          const { repair_cost, ...fallbackData } = itemData
+          await supabase.from('deal_items').update(fallbackData).eq('id', i.id)
+        }
       } else {
         // Insert new item
-        const { data: insertedItem } = await supabase.from('deal_items').insert(itemData).select('id').single()
-        itemId = insertedItem?.id || itemId
+        const { data: insertedItem, error: insErr } = await supabase.from('deal_items').insert(itemData).select('id').single()
+        if (insErr && insErr.message?.includes('repair_cost')) {
+          const { repair_cost, ...fallbackData } = itemData
+          const { data: fallbackInserted } = await supabase.from('deal_items').insert(fallbackData).select('id').single()
+          itemId = fallbackInserted?.id || itemId
+        } else {
+          itemId = insertedItem?.id || itemId
+        }
       }
 
       // Propagate unit_cost, logistics_cost and repair_cost to inventory_items scanned under this SKU

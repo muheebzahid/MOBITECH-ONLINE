@@ -1,7 +1,14 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createSupabaseAdmin(url, key)
+}
 
 // Constant conversion rate
 const USD_TO_AED = 3.674
@@ -43,7 +50,7 @@ export async function editExpense(id: string, data: { amount?: number, category?
 }
 
 export async function getFinancialSummary(statementDateFilter?: string, fromDate?: string, toDate?: string) {
-  const supabase = await createClient()
+  const supabase = getAdminClient()
 
   // 1. Prepare queries
   let invoicesQuery = supabase
@@ -66,7 +73,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     .select(`
       id, quantity, unit_cost, auction_fee, other_fees, total_commitment, funding_source, amex_amount, cash_amount, cashback_amount, cashback_received, status, amex_statement_date,
       shipment_deals ( shipments ( id, total_logistics_cost, shipment_deals ( deals ( quantity ) ) ) ),
-      items:deal_items ( id, unit_cost, repair_cost, quantity )
+      items:deal_items ( * )
     `)
   if (statementDateFilter) dealsQuery = dealsQuery.eq('amex_statement_date', statementDateFilter)
 
@@ -93,7 +100,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     invoicesQuery,
     onlineOrdersQuery,
     dealsQuery,
-    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(unit_cost, repair_cost), invoices!inner(id, status, issue_date, client_id)'),
+    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(*), invoices!inner(id, status, issue_date, client_id)'),
     supabase.from('invoice_line_items').select('quantity, deal_id, invoices!inner(status)'),
     supabase.from('inventory_items').select('id, unit_cost, logistics_cost, repair_cost, model, storage, grade, color, online_order_id, online_order_item_id, status, refurb_stage').not('online_order_id', 'is', null),
     supabase.from('shipments').select('total_logistics_cost'),
