@@ -120,7 +120,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   ])
 
   const wholesaleInvoices = (invoices || []).filter((inv: any) => !isRevibe(inv))
-  const revibeInvoicesList = (invoices || []).filter((inv: any) => isRevibe(inv) && inv.status !== 'CANCELLED')
+  const revibeInvoicesList = (invoices || []).filter((inv: any) => isRevibe(inv) && inv.status !== 'CANCELLED' && inv.status !== 'DRAFT')
 
   let wholesaleRevenue = 0
   let revibeRevenue = 0
