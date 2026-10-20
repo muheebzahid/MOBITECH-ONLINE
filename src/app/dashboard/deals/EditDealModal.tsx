@@ -61,8 +61,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
         color: i.color || '',
         quantity: String(i.quantity),
         unitCost: String(i.unit_cost),
-        totalCost: i.quantity > 0 && i.unit_cost >= 0 ? (i.quantity * i.unit_cost).toFixed(2).replace(/\.?0+$/, '') : '',
-        repairCost: String(i.repair_cost || 0)
+        totalCost: i.quantity > 0 && i.unit_cost >= 0 ? (i.quantity * i.unit_cost).toFixed(2).replace(/\.?0+$/, '') : ''
       }))
     }
     // Legacy fallback
@@ -75,8 +74,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
       color: deal.color || '',
       quantity: String(deal.quantity),
       unitCost: String(deal.unit_cost),
-      totalCost: deal.quantity > 0 && deal.unit_cost >= 0 ? (deal.quantity * deal.unit_cost).toFixed(2).replace(/\.?0+$/, '') : '',
-      repairCost: '0'
+      totalCost: deal.quantity > 0 && deal.unit_cost >= 0 ? (deal.quantity * deal.unit_cost).toFixed(2).replace(/\.?0+$/, '') : ''
     }]
   })
 
@@ -136,7 +134,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
   }
 
   const addItem = () => {
-    setItems(prev => [...prev, { id: crypto.randomUUID(), model: '', storage: '128GB', grade: 'CT', carrier: 'AT&T', color: '', quantity: '', unitCost: '', totalCost: '', repairCost: '0' }])
+    setItems(prev => [...prev, { id: crypto.randomUUID(), model: '', storage: '128GB', grade: 'CT', carrier: 'AT&T', color: '', quantity: '', unitCost: '', totalCost: '' }])
   }
 
   const removeItem = (id: string) => {
@@ -161,7 +159,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
       color: i.color,
       quantity: parseInt(i.quantity) || 0,
       unit_cost: parseFloat(i.unitCost) || 0,
-      repair_cost: parseFloat(i.repairCost) || 0
+      repair_cost: 0
     }))
     fd.append('items_json', JSON.stringify(mappedItems))
 
@@ -310,7 +308,7 @@ export default function EditDealModal({ deal, onClose }: Props) {
                     <input type="text" className="form-input" placeholder="e.g. Midnight" value={item.color} onChange={e => updateItem(item.id, 'color', e.target.value)} />
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                   <div className="form-group">
                     <label className="form-label">Quantity *</label>
                     <input type="number" min="1" className="form-input" placeholder="100" value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} required />
@@ -322,10 +320,6 @@ export default function EditDealModal({ deal, onClose }: Props) {
                   <div className="form-group">
                     <label className="form-label">Unit Cost (USD) *</label>
                     <input type="number" step="any" min="0" className="form-input" placeholder="100.00" value={item.unitCost} onChange={e => updateItem(item.id, 'unitCost', e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Est. Repair Cost/Unit (USD)</label>
-                    <input type="number" step="any" min="0" className="form-input" placeholder="0.00" value={item.repairCost} onChange={e => updateItem(item.id, 'repairCost', e.target.value)} />
                   </div>
                 </div>
               </div>

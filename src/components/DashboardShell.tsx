@@ -32,10 +32,8 @@ export default function DashboardShell({ user, children }: Props) {
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '⊞', href: '/dashboard', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
     { id: 'deals', label: 'Deals', icon: '◈', href: '/dashboard/deals', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
-    { id: 'inventory', label: 'Online Inventory', icon: '📦', href: '/dashboard/inventory', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
     { id: 'logistics', label: 'Logistics', icon: '◎', href: '/dashboard/logistics', roles: ['SUPER_ADMIN', 'FINANCE', 'LOGISTICS', 'VIEW_ONLY'] },
     { id: 'sales', label: 'Sales Invoices', icon: '📄', href: '/dashboard/sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
-    { id: 'online-sales', label: 'Online Sales', icon: '🛒', href: '/dashboard/online-sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
     { id: 'clients', label: 'Clients', icon: '👤', href: '/dashboard/clients', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
     { id: 'accounting', label: 'Accounting', icon: '📊', href: '/dashboard/accounting', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
     { 
@@ -232,9 +230,7 @@ export default function DashboardShell({ user, children }: Props) {
           {[
             { id: 'home', label: 'Home', icon: '⊞', href: '/dashboard', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
             { id: 'deals', label: 'Deals', icon: '◈', href: '/dashboard/deals', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
-            { id: 'inventory', label: 'Stock', icon: '📦', href: '/dashboard/inventory', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
             { id: 'sales', label: 'Invoices', icon: '📄', href: '/dashboard/sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
-            { id: 'online-sales', label: 'Online', icon: '🛒', href: '/dashboard/online-sales', roles: ['SUPER_ADMIN', 'FINANCE', 'SALES', 'VIEW_ONLY'] },
             { id: 'clients', label: 'Clients', icon: '👤', href: '/dashboard/clients', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
             { id: 'accounting', label: 'Finance', icon: '📊', href: '/dashboard/accounting', roles: ['SUPER_ADMIN', 'FINANCE', 'VIEW_ONLY'] },
             { id: 'logistics', label: 'Logistics', icon: '◎', href: '/dashboard/logistics', roles: ['SUPER_ADMIN', 'FINANCE', 'LOGISTICS', 'VIEW_ONLY'] }

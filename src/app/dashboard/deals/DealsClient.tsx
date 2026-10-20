@@ -516,8 +516,7 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
     tShipCost += dealShipmentCost
     const remainingQty = Math.max(0, deal.quantity - invoicedQty)
     tStuck += deal.quantity > 0 ? remainingQty * (deal.total_commitment / deal.quantity) : 0
-    const dealRepairCost = ((deal as any).items || []).reduce((sum: number, it: any) => sum + (Number(it.repair_cost || 0) * (Number(it.quantity) || 0)), 0)
-    tProfit += (invoicedValue - deal.total_commitment - dealShipmentCost - dealRepairCost)
+    tProfit += (invoicedValue - deal.total_commitment - dealShipmentCost)
     
     let amexProfit = 0
     if (deal.funding_source === 'AMEX' || deal.funding_source === 'MIXED') {
@@ -635,12 +634,10 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
                   }
                 }
 
-                const dealRepairCost = (d.items || []).reduce((sum: number, it: any) => sum + (Number(it.repair_cost || 0) * (Number(it.quantity) || 0)), 0)
-                const dealRepairCostPerUnit = d.quantity > 0 ? (dealRepairCost / d.quantity) : 0
-                const totalLandedCost = d.total_commitment + dealShipmentCost + dealRepairCost
+                const totalLandedCost = d.total_commitment + dealShipmentCost
                 const landedUnitCost = d.quantity > 0 ? (totalLandedCost / d.quantity) : 0
-                const totalCogs = invoicedQty * (baseUnitCost + shipmentUnitCost + dealRepairCostPerUnit)
-                const liveGrossProfit = invoicedValue - d.total_commitment - dealShipmentCost - dealRepairCost
+                const totalCogs = invoicedQty * (baseUnitCost + shipmentUnitCost)
+                const liveGrossProfit = invoicedValue - d.total_commitment - dealShipmentCost
                 const grossMarginPct = invoicedValue > 0 ? ((liveGrossProfit / invoicedValue) * 100) : 0
 
                 let amexProfit = 0
@@ -728,7 +725,6 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
                 'Quantity',
                 'Unit Cost ($)',
                 'Total Cost ($)',
-                'Repair Cost ($)',
                 'Linked Shipment #',
                 'Deal Created Date'
               ]
@@ -756,7 +752,6 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
                       itQty,
                       itCost,
                       itTotal,
-                      Number(it.repair_cost || 0),
                       shipmentNumbers,
                       dealCreated
                     ])
@@ -1162,8 +1157,7 @@ function DealsClientInner({ deals, settings, total = 0, page = 0 }: Props) {
                   }
                 }
 
-                const dealRepairCost = ((deal as any).items || []).reduce((sum: number, it: any) => sum + (Number(it.repair_cost || 0) * (Number(it.quantity) || 0)), 0)
-                const liveGrossProfit = invoicedValue - deal.total_commitment - dealShipmentCost - dealRepairCost
+                const liveGrossProfit = invoicedValue - deal.total_commitment - dealShipmentCost
                 
                 let amexProfit = 0
                 if (deal.funding_source === 'AMEX' || deal.funding_source === 'MIXED') {

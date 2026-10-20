@@ -52,10 +52,18 @@ export async function editExpense(id: string, data: { amount?: number, category?
 export async function getFinancialSummary(statementDateFilter?: string, fromDate?: string, toDate?: string) {
   const supabase = getAdminClient()
 
+  const REVIBE_CLIENT_ID = 'ed2d7d34-799d-46eb-ad8d-c7ae7ed04c66'
+  const isRevibe = (inv: any) => Boolean(
+    inv && (
+      inv.client_id === REVIBE_CLIENT_ID || 
+      (typeof inv.customer_name === 'string' && inv.customer_name.toUpperCase().includes('REVIBE'))
+    )
+  )
+
   // 1. Prepare queries
   let invoicesQuery = supabase
     .from('invoices')
-    .select('id, client_id, total_amount, balance_due, amount_paid, status, issue_date')
+    .select('id, invoice_number, client_id, customer_name, total_amount, balance_due, amount_paid, repair_cost, status, issue_date')
     .neq('status', 'CANCELLED')
     .neq('client_id', '4b6cd459-dd29-4be7-a28e-58cbbed31285')
   if (fromDate) invoicesQuery = invoicesQuery.gte('issue_date', fromDate)
@@ -100,7 +108,7 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     invoicesQuery,
     onlineOrdersQuery,
     dealsQuery,
-    supabase.from('invoice_line_items').select('quantity, deal_id, deal_item_id, deal_items(*), invoices!inner(id, status, issue_date, client_id)'),
+    supabase.from('invoice_line_items').select('id, quantity, unit_price, total_price, repair_cost, description, deal_id, deal_item_id, deal_items(*), invoices!inner(id, invoice_number, status, issue_date, client_id, customer_name, repair_cost)'),
     supabase.from('invoice_line_items').select('quantity, deal_id, invoices!inner(status)'),
     supabase.from('inventory_items').select('id, unit_cost, logistics_cost, repair_cost, model, storage, grade, color, online_order_id, online_order_item_id, status, refurb_stage').not('online_order_id', 'is', null),
     supabase.from('shipments').select('total_logistics_cost'),
@@ -111,15 +119,23 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       : Promise.resolve({ data: null, error: null } as any)
   ])
 
+  const wholesaleInvoices = (invoices || []).filter((inv: any) => !isRevibe(inv))
+  const revibeInvoicesList = (invoices || []).filter((inv: any) => isRevibe(inv) && inv.status !== 'CANCELLED')
+
   let wholesaleRevenue = 0
+  let revibeRevenue = 0
+
   if (!invErr && invoices) {
-    wholesaleRevenue = invoices.filter((inv: any) => inv.status !== 'DRAFT').reduce((sum, inv) => sum + Number(inv.total_amount), 0)
+    wholesaleRevenue = wholesaleInvoices
+      .filter((inv: any) => inv.status !== 'DRAFT')
+      .reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0)
+
+    revibeRevenue = revibeInvoicesList
+      .filter((inv: any) => inv.status !== 'DRAFT')
+      .reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0)
   }
 
-  let onlineRevenue = 0
-  if (onlineOrders) {
-    onlineRevenue = onlineOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0)
-  }
+  let onlineRevenue = revibeRevenue
 
   if (statementDateFilter) {
     wholesaleRevenue = 0
@@ -134,9 +150,10 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     }
     wholesaleRevenue = filteredRevenue
     onlineRevenue = 0
+    revibeRevenue = 0
   }
 
-  const totalRevenue = wholesaleRevenue + onlineRevenue
+  const totalRevenue = wholesaleRevenue + revibeRevenue
 
   const dealCosts: Record<string, { averageBaseCost: number, dealFeePerUnit: number, shippingCostPerUnit: number, amexProfitPerUnit: number }> = {}
   let amexProfit = 0
@@ -191,53 +208,14 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   let wholesaleRepairCost = 0
   let wholesaleCogs = 0
 
-  const dealMap = new Map<string, any>()
-  if (deals) {
-    deals.forEach((d: any) => dealMap.set(d.id, d))
-  }
+  let revibeCogsDevices = 0
+  let revibeCogsLogistics = 0
+  let revibeTotalUnitsSold = 0
 
-  activeLineItems.forEach((li: any) => {
-    if (li.deal_id) {
-      const costs = dealCosts[li.deal_id]
-      if (costs) {
-        const itemUnitCost = li.deal_items?.unit_cost !== undefined ? Number(li.deal_items.unit_cost) : (costs.averageBaseCost - costs.dealFeePerUnit)
-        const stockPlusFeeCost = itemUnitCost + costs.dealFeePerUnit
-        let itemRepairCost = Number(li.deal_items?.repair_cost || 0)
-        if (!itemRepairCost) {
-          const dealObj = dealMap.get(li.deal_id)
-          if (dealObj?.items?.length === 1) {
-            itemRepairCost = Number(dealObj.items[0]?.repair_cost || 0)
-          }
-        }
-        
-        wholesaleCogsDevices += li.quantity * stockPlusFeeCost
-        wholesaleCogsLogistics += li.quantity * costs.shippingCostPerUnit
-        wholesaleRepairCost += li.quantity * itemRepairCost
-        wholesaleCogs += li.quantity * (stockPlusFeeCost + costs.shippingCostPerUnit + itemRepairCost)
-        
-        amexProfit += li.quantity * (costs.amexProfitPerUnit || 0)
-      }
-    }
+  const revibeInvoiceStats: Record<string, { units: number, cogs: number }> = {}
+  revibeInvoicesList.forEach((inv: any) => {
+    revibeInvoiceStats[inv.id] = { units: 0, cogs: 0 }
   })
-
-  let onlineCogsDevices = 0
-  let onlineCogsLogistics = 0
-  let onlineTotalRepairCost = 0
-  let onlineOtherExpenses = 0
-  let onlineTotalUnitsSold = 0
-
-  const orderMap = new Map<string, any>()
-  if (onlineOrders) {
-    onlineOrders.forEach((ord: any) => {
-      orderMap.set(ord.id, ord)
-    })
-  }
-
-  // Platform and SKU breakdown accumulators
-  const platformStats = {
-    AMAZON: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 },
-    REVIBE: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 }
-  }
 
   const skuMap = new Map<string, {
     model: string
@@ -256,122 +234,145 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     roi: number
   }>()
 
-  if (!statementDateFilter) {
-    const validOnlineOrderIds = new Set(onlineOrders?.map((o: any) => o.id) || [])
-
-    // 1. Process online inventory items
-    if (onlineInventory) {
-      onlineInventory.forEach(item => {
-        if ((fromDate || toDate) && !validOnlineOrderIds.has(item.online_order_id)) {
-          return
-        }
-
-        const devCost = Number(item.unit_cost || 0)
-        const logCost = Number(item.logistics_cost || 0)
-        const repCost = Number(item.repair_cost || 0)
-
-        onlineCogsDevices += devCost
-        onlineCogsLogistics += logCost
-        onlineTotalRepairCost += repCost
-        onlineTotalUnitsSold += 1
-
-        const order = orderMap.get(item.online_order_id)
-        const plat = (order?.platform === 'AMAZON' ? 'AMAZON' : 'REVIBE') as 'AMAZON' | 'REVIBE'
-        if (platformStats[plat]) {
-          platformStats[plat].unitsSold += 1
-          platformStats[plat].cogsDevices += devCost
-          platformStats[plat].cogsLogistics += logCost
-          platformStats[plat].repairCost += repCost
-        }
-
-        // SKU Map grouping
-        const skuKey = `${item.model || 'Unknown'}__${item.storage || ''}__${item.grade || ''}`.toUpperCase()
-        if (!skuMap.has(skuKey)) {
-          skuMap.set(skuKey, {
-            model: item.model || 'Unknown',
-            storage: item.storage || '',
-            grade: item.grade || '',
-            quantity: 0,
-            revenue: 0,
-            cogsDevices: 0,
-            logisticsCost: 0,
-            repairCost: 0,
-            totalCost: 0,
-            netProfit: 0,
-            avgPrice: 0,
-            avgCost: 0,
-            profitPerUnit: 0,
-            roi: 0
-          })
-        }
-        const skuEntry = skuMap.get(skuKey)!
-        skuEntry.quantity += 1
-        skuEntry.cogsDevices += devCost
-        skuEntry.logisticsCost += logCost
-        skuEntry.repairCost += repCost
-        skuEntry.totalCost += (devCost + logCost + repCost)
-      })
-    }
-
-    // 2. Add platform revenue & SKU revenue from orders
-    if (onlineOrders) {
-      onlineOrders.forEach((order: any) => {
-        const plat = (order.platform === 'AMAZON' ? 'AMAZON' : 'REVIBE') as 'AMAZON' | 'REVIBE'
-        const ordRevenue = Number(order.total_amount || 0)
-        if (platformStats[plat]) {
-          platformStats[plat].revenue += ordRevenue
-        }
-
-        // Distribute revenue to SKUs
-        if (order.items && Array.isArray(order.items)) {
-          order.items.forEach((it: any) => {
-            const skuKey = `${it.model || 'Unknown'}__${it.storage || ''}__${it.grade || ''}`.toUpperCase()
-            const itemRev = Number(it.unit_price || 0) * (Number(it.quantity) || 1)
-            if (skuMap.has(skuKey)) {
-              skuMap.get(skuKey)!.revenue += itemRev
-            } else {
-              skuMap.set(skuKey, {
-                model: it.model || 'Unknown',
-                storage: it.storage || '',
-                grade: it.grade || '',
-                quantity: Number(it.quantity) || 1,
-                revenue: itemRev,
-                cogsDevices: 0,
-                logisticsCost: 0,
-                repairCost: 0,
-                totalCost: 0,
-                netProfit: 0,
-                avgPrice: 0,
-                avgCost: 0,
-                profitPerUnit: 0,
-                roi: 0
-              })
-            }
-          })
-        }
-      })
-    }
-
-    // 3. Online-specific operational expenses (e.g. Marketing / Platform Fees)
-    if (fetchedOpex) {
-      fetchedOpex.forEach((exp: any) => {
-        const cat = String(exp.category || '').toUpperCase()
-        const desc = String(exp.description || '').toLowerCase()
-        if (cat === 'MARKETING' || desc.includes('amazon fba') || desc.includes('amazon seller') || desc.includes('revibe commission')) {
-          onlineOtherExpenses += Number(exp.amount || 0)
-        }
-      })
-    }
+  const dealMap = new Map<string, any>()
+  if (deals) {
+    deals.forEach((d: any) => dealMap.set(d.id, d))
   }
 
-  // Finalize Platform Stats
-  (['AMAZON', 'REVIBE'] as const).forEach(plat => {
-    const p = platformStats[plat]
-    p.totalCost = p.cogsDevices + p.cogsLogistics + p.repairCost + p.otherExpenses
-    p.grossProfit = p.revenue - (p.cogsDevices + p.cogsLogistics + p.repairCost)
-    p.netProfit = p.revenue - p.totalCost
-    p.roi = p.totalCost > 0 ? (p.netProfit / p.totalCost) * 100 : 0
+  activeLineItems.forEach((li: any) => {
+    const isRev = isRevibe(li.invoices)
+    const qty = Number(li.quantity || 0)
+
+    let stockPlusFeeCost = 0
+    let shippingCostPerUnit = 0
+
+    if (li.deal_id) {
+      const costs = dealCosts[li.deal_id]
+      if (costs) {
+        const itemUnitCost = li.deal_items?.unit_cost !== undefined ? Number(li.deal_items.unit_cost) : (costs.averageBaseCost - costs.dealFeePerUnit)
+        stockPlusFeeCost = itemUnitCost + costs.dealFeePerUnit
+        shippingCostPerUnit = costs.shippingCostPerUnit
+
+        if (!isRev) {
+          amexProfit += qty * (costs.amexProfitPerUnit || 0)
+        }
+      }
+    }
+
+    if (isRev) {
+      revibeTotalUnitsSold += qty
+      revibeCogsDevices += qty * stockPlusFeeCost
+      revibeCogsLogistics += qty * shippingCostPerUnit
+
+      const invId = li.invoices?.id
+      if (invId) {
+        if (!revibeInvoiceStats[invId]) {
+          revibeInvoiceStats[invId] = { units: 0, cogs: 0 }
+        }
+        revibeInvoiceStats[invId].units += qty
+        revibeInvoiceStats[invId].cogs += qty * (stockPlusFeeCost + shippingCostPerUnit)
+      }
+
+      // SKU breakdown for Revibe
+      const desc = li.description || ''
+      let model = li.deal_items?.model || ''
+      let storage = li.deal_items?.storage || ''
+      let grade = li.deal_items?.grade || ''
+
+      if (!model) {
+        const match = desc.match(/(iPhone\s+[^\s]+(?:\s+(?:Pro\s+Max|Pro|Plus|Mini))?)/i)
+        model = match ? match[1] : (desc.split('(')[0].trim() || 'Unknown Model')
+        const storageMatch = desc.match(/(64GB|128GB|256GB|512GB|1TB)/i)
+        if (storageMatch) storage = storageMatch[1].toUpperCase()
+        const gradeMatch = desc.match(/Grade\s+([A-Za-z0-9_]+)/i)
+        if (gradeMatch) grade = gradeMatch[1]
+      }
+
+      const skuKey = `${model}__${storage}__${grade}`.toUpperCase()
+      if (!skuMap.has(skuKey)) {
+        skuMap.set(skuKey, {
+          model,
+          storage,
+          grade,
+          quantity: 0,
+          revenue: 0,
+          cogsDevices: 0,
+          logisticsCost: 0,
+          repairCost: 0,
+          totalCost: 0,
+          netProfit: 0,
+          avgPrice: 0,
+          avgCost: 0,
+          profitPerUnit: 0,
+          roi: 0
+        })
+      }
+      const skuEntry = skuMap.get(skuKey)!
+      const itemRev = qty * Number(li.unit_price || 0)
+      const itemDevCost = qty * stockPlusFeeCost
+      const itemLogCost = qty * shippingCostPerUnit
+      const itemRepCost = Number(li.repair_cost || 0)
+
+      skuEntry.quantity += qty
+      skuEntry.revenue += itemRev
+      skuEntry.cogsDevices += itemDevCost
+      skuEntry.logisticsCost += itemLogCost
+      skuEntry.repairCost += itemRepCost
+      skuEntry.totalCost += (itemDevCost + itemLogCost + itemRepCost)
+    } else {
+      let itemRepairCost = Number(li.repair_cost || li.deal_items?.repair_cost || 0)
+      if (!itemRepairCost) {
+        const dealObj = dealMap.get(li.deal_id)
+        if (dealObj?.items?.length === 1) {
+          itemRepairCost = Number(dealObj.items[0]?.repair_cost || 0)
+        }
+      }
+      wholesaleCogsDevices += qty * stockPlusFeeCost
+      wholesaleCogsLogistics += qty * shippingCostPerUnit
+      wholesaleRepairCost += qty * itemRepairCost
+      wholesaleCogs += qty * (stockPlusFeeCost + shippingCostPerUnit + itemRepairCost)
+    }
   })
+
+  // Revibe total repair cost from invoices
+  const revibeTotalRepairCost = revibeInvoicesList.reduce((sum: number, inv: any) => sum + Number(inv.repair_cost || 0), 0)
+  const revibeTotalCost = revibeCogsDevices + revibeCogsLogistics + revibeTotalRepairCost
+  const revibeGrossProfit = revibeRevenue - (revibeCogsDevices + revibeCogsLogistics)
+  const revibeNetProfit = revibeRevenue - revibeTotalCost
+  const revibeRoi = revibeTotalCost > 0 ? (revibeNetProfit / revibeTotalCost) * 100 : 0
+  const revibeGrossMarginPct = revibeRevenue > 0 ? (revibeGrossProfit / revibeRevenue) * 100 : 0
+  const revibeNetMarginPct = revibeRevenue > 0 ? (revibeNetProfit / revibeRevenue) * 100 : 0
+  const revibeAvgSellingPrice = revibeTotalUnitsSold > 0 ? revibeRevenue / revibeTotalUnitsSold : 0
+  const revibeAvgCostPerUnit = revibeTotalUnitsSold > 0 ? revibeTotalCost / revibeTotalUnitsSold : 0
+  const revibeAvgProfitPerUnit = revibeTotalUnitsSold > 0 ? revibeNetProfit / revibeTotalUnitsSold : 0
+  const revibeTotalPaid = revibeInvoicesList.reduce((sum: number, inv: any) => sum + Number(inv.amount_paid || 0), 0)
+  const revibeTotalBalanceDue = revibeInvoicesList.reduce((sum: number, inv: any) => sum + Number(inv.balance_due || 0), 0)
+
+  // Monthly settlement invoices for Revibe
+  const revibeMonthlyInvoices = revibeInvoicesList.map((inv: any) => {
+    const stats = revibeInvoiceStats[inv.id] || { units: 0, cogs: 0 }
+    const totalAmount = Number(inv.total_amount || 0)
+    const repairCost = Number(inv.repair_cost || 0)
+    const netProfit = totalAmount - stats.cogs - repairCost
+    const amountPaid = Number(inv.amount_paid || 0)
+    const balanceDue = Number(inv.balance_due || 0)
+    const totalCost = stats.cogs + repairCost
+    const roi = totalCost > 0 ? (netProfit / totalCost) * 100 : 0
+    return {
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      issue_date: inv.issue_date,
+      status: inv.status,
+      total_amount: totalAmount,
+      units: stats.units,
+      cogs: stats.cogs,
+      repair_cost: repairCost,
+      net_profit: netProfit,
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+      roi
+    }
+  }).sort((a: any, b: any) => new Date(a.issue_date).getTime() - new Date(b.issue_date).getTime())
 
   // Finalize SKU Breakdown
   const skuBreakdown = Array.from(skuMap.values()).map(sku => {
@@ -390,46 +391,55 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     }
   }).sort((a, b) => b.revenue - a.revenue)
 
-  const onlineTotalCost = onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost + onlineOtherExpenses
-  const onlineGrossProfit = onlineRevenue - (onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost)
-  const onlineNetProfit = onlineRevenue - onlineTotalCost
-  const onlineRoi = onlineTotalCost > 0 ? (onlineNetProfit / onlineTotalCost) * 100 : 0
-  const onlineGrossMarginPct = onlineRevenue > 0 ? (onlineGrossProfit / onlineRevenue) * 100 : 0
-  const onlineNetMarginPct = onlineRevenue > 0 ? (onlineNetProfit / onlineRevenue) * 100 : 0
-  const onlineAvgSellingPrice = onlineTotalUnitsSold > 0 ? onlineRevenue / onlineTotalUnitsSold : 0
-  const onlineAvgCostPerUnit = onlineTotalUnitsSold > 0 ? onlineTotalCost / onlineTotalUnitsSold : 0
-  const onlineAvgProfitPerUnit = onlineTotalUnitsSold > 0 ? onlineNetProfit / onlineTotalUnitsSold : 0
-
-  const onlineCogs = onlineCogsDevices + onlineCogsLogistics + onlineTotalRepairCost
-
-  const cogsDevices = wholesaleCogsDevices + onlineCogsDevices
-  const cogsLogistics = wholesaleCogsLogistics + onlineCogsLogistics
-  const cogs = wholesaleCogs + onlineCogs
-  const totalSoldShippingCost = wholesaleCogsLogistics + onlineCogsLogistics
-
-  let onlineUnsoldValue = 0
-  const { data: onlineUnsoldItems } = await supabase
-    .from('inventory_items')
-    .select('unit_cost, logistics_cost, repair_cost')
-    .neq('refurb_stage', 'SOLD')
-
-  if (onlineUnsoldItems) {
-    onlineUnsoldItems.forEach(item => {
-      const cost = Number(item.unit_cost || 0) + Number(item.logistics_cost || 0) + Number(item.repair_cost || 0)
-      onlineUnsoldValue += cost
-    })
+  // Platform Stats
+  const platformStats = {
+    AMAZON: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 },
+    REVIBE: {
+      unitsSold: revibeTotalUnitsSold,
+      revenue: revibeRevenue,
+      cogsDevices: revibeCogsDevices,
+      cogsLogistics: revibeCogsLogistics,
+      repairCost: revibeTotalRepairCost,
+      otherExpenses: 0,
+      totalCost: revibeTotalCost,
+      grossProfit: revibeGrossProfit,
+      netProfit: revibeNetProfit,
+      roi: revibeRoi
+    }
   }
 
-  let inventoryValue = 0 // Wholesale unsold inventory value
+  // Backward-compatible online alias metrics
+  const onlineCogsDevices = revibeCogsDevices
+  const onlineCogsLogistics = revibeCogsLogistics
+  const onlineTotalRepairCost = revibeTotalRepairCost
+  const onlineOtherExpenses = 0
+  const onlineTotalUnitsSold = revibeTotalUnitsSold
+  const onlineTotalCost = revibeTotalCost
+  const onlineGrossProfit = revibeGrossProfit
+  const onlineNetProfit = revibeNetProfit
+  const onlineRoi = revibeRoi
+  const onlineGrossMarginPct = revibeGrossMarginPct
+  const onlineNetMarginPct = revibeNetMarginPct
+  const onlineAvgSellingPrice = revibeAvgSellingPrice
+  const onlineAvgCostPerUnit = revibeAvgCostPerUnit
+  const onlineAvgProfitPerUnit = revibeAvgProfitPerUnit
+  const onlineCogs = revibeTotalCost
+
+  const cogsDevices = wholesaleCogsDevices + revibeCogsDevices
+  const cogsLogistics = wholesaleCogsLogistics + revibeCogsLogistics
+  const cogs = wholesaleCogs + revibeTotalCost
+  const totalSoldShippingCost = wholesaleCogsLogistics + revibeCogsLogistics
+
+  const onlineUnsoldValue = 0 // All unsold inventory has been restored into deals
+
+  let inventoryValue = 0 // Wholesale and restored unsold inventory value
   if (deals) {
     deals.forEach((deal: any) => {
       const soldQty = dealSoldQuantities[deal.id] || 0
       const unsoldQty = Math.max(0, (deal.quantity || 0) - soldQty)
       const costs = dealCosts[deal.id]
       if (costs && unsoldQty > 0) {
-        const dealRepairCost = (deal.items || []).reduce((sum: number, it: any) => sum + (Number(it.repair_cost || 0) * (Number(it.quantity) || 0)), 0)
-        const dealRepairCostPerUnit = (deal.quantity || 0) > 0 ? (dealRepairCost / deal.quantity) : 0
-        const unitTotalCost = costs.averageBaseCost + costs.shippingCostPerUnit + dealRepairCostPerUnit
+        const unitTotalCost = costs.averageBaseCost + costs.shippingCostPerUnit
         inventoryValue += unsoldQty * unitTotalCost
       }
     })
@@ -465,9 +475,9 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   }
 
   const grossProfitWholesale = wholesaleRevenue - wholesaleCogs
-  const grossProfitOnline = onlineGrossProfit
-  const grossProfit = totalRevenue - cogs
-  const netProfit = grossProfit + amexProfit - totalOpex
+  const grossProfitOnline = revibeGrossProfit
+  const grossProfit = totalRevenue - (wholesaleCogsDevices + wholesaleCogsLogistics + revibeCogsDevices + revibeCogsLogistics)
+  const netProfit = totalRevenue - cogs + amexProfit - totalOpex
 
   const amexLimit = settings?.amex_limit || 500000
   const cashLimit = settings?.cash_limit || 300000
@@ -484,35 +494,41 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   const cashAvailable = cashLimit - cashStuck
 
   // Balance Sheet Calculations (GAAP Standard)
-  const accountsReceivable = invoices ? invoices
+  const accountsReceivableWholesale = wholesaleInvoices
     .filter((inv: any) => inv.status !== 'CANCELLED' && inv.status !== 'VOIDED')
-    .reduce((sum, inv) => sum + (Number(inv.balance_due) || 0), 0) : 0
+    .reduce((sum, inv) => sum + (Number(inv.balance_due) || 0), 0)
+  
+  const accountsReceivableRevibe = revibeTotalBalanceDue
+  const accountsReceivable = accountsReceivableWholesale + accountsReceivableRevibe
 
   const accountsPayable = 0
   const amexLiability = amexStuck
   const liquidCash = Math.max(0, cashAvailable)
   const retainedEarnings = netProfit
 
-  const totalAssets = liquidCash + accountsReceivable + inventoryValue + onlineUnsoldValue
+  const totalAssets = liquidCash + accountsReceivable + inventoryValue
   const totalLiabilities = accountsPayable + amexLiability
   const totalEquity = retainedEarnings
 
   const onlineMetricsUsd = {
-    totalUnitsSold: onlineTotalUnitsSold,
-    totalRevenue: onlineRevenue,
-    cogsDevices: onlineCogsDevices,
-    cogsLogistics: onlineCogsLogistics,
-    totalRepairCost: onlineTotalRepairCost,
-    otherExpenses: onlineOtherExpenses,
-    totalCost: onlineTotalCost,
-    grossProfit: onlineGrossProfit,
-    netProfit: onlineNetProfit,
-    roi: onlineRoi,
-    grossMarginPct: onlineGrossMarginPct,
-    netMarginPct: onlineNetMarginPct,
-    avgSellingPrice: onlineAvgSellingPrice,
-    avgCostPerUnit: onlineAvgCostPerUnit,
-    avgProfitPerUnit: onlineAvgProfitPerUnit,
+    totalUnitsSold: revibeTotalUnitsSold,
+    totalRevenue: revibeRevenue,
+    cogsDevices: revibeCogsDevices,
+    cogsLogistics: revibeCogsLogistics,
+    totalRepairCost: revibeTotalRepairCost,
+    otherExpenses: 0,
+    totalCost: revibeTotalCost,
+    grossProfit: revibeGrossProfit,
+    netProfit: revibeNetProfit,
+    roi: revibeRoi,
+    grossMarginPct: revibeGrossMarginPct,
+    netMarginPct: revibeNetMarginPct,
+    avgSellingPrice: revibeAvgSellingPrice,
+    avgCostPerUnit: revibeAvgCostPerUnit,
+    avgProfitPerUnit: revibeAvgProfitPerUnit,
+    totalPaid: revibeTotalPaid,
+    totalBalanceDue: revibeTotalBalanceDue,
+    monthlyInvoices: revibeMonthlyInvoices,
     platformBreakdown: {
       amazon: platformStats.AMAZON,
       revibe: platformStats.REVIBE
@@ -521,40 +537,40 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
   }
 
   const onlineMetricsAed = {
-    totalUnitsSold: onlineTotalUnitsSold,
-    totalRevenue: onlineRevenue * USD_TO_AED,
-    cogsDevices: onlineCogsDevices * USD_TO_AED,
-    cogsLogistics: onlineCogsLogistics * USD_TO_AED,
-    totalRepairCost: onlineTotalRepairCost * USD_TO_AED,
-    otherExpenses: onlineOtherExpenses * USD_TO_AED,
-    totalCost: onlineTotalCost * USD_TO_AED,
-    grossProfit: onlineGrossProfit * USD_TO_AED,
-    netProfit: onlineNetProfit * USD_TO_AED,
-    roi: onlineRoi,
-    grossMarginPct: onlineGrossMarginPct,
-    netMarginPct: onlineNetMarginPct,
-    avgSellingPrice: onlineAvgSellingPrice * USD_TO_AED,
-    avgCostPerUnit: onlineAvgCostPerUnit * USD_TO_AED,
-    avgProfitPerUnit: onlineAvgProfitPerUnit * USD_TO_AED,
+    totalUnitsSold: revibeTotalUnitsSold,
+    totalRevenue: revibeRevenue * USD_TO_AED,
+    cogsDevices: revibeCogsDevices * USD_TO_AED,
+    cogsLogistics: revibeCogsLogistics * USD_TO_AED,
+    totalRepairCost: revibeTotalRepairCost * USD_TO_AED,
+    otherExpenses: 0,
+    totalCost: revibeTotalCost * USD_TO_AED,
+    grossProfit: revibeGrossProfit * USD_TO_AED,
+    netProfit: revibeNetProfit * USD_TO_AED,
+    roi: revibeRoi,
+    grossMarginPct: revibeGrossMarginPct,
+    netMarginPct: revibeNetMarginPct,
+    avgSellingPrice: revibeAvgSellingPrice * USD_TO_AED,
+    avgCostPerUnit: revibeAvgCostPerUnit * USD_TO_AED,
+    avgProfitPerUnit: revibeAvgProfitPerUnit * USD_TO_AED,
+    totalPaid: revibeTotalPaid * USD_TO_AED,
+    totalBalanceDue: revibeTotalBalanceDue * USD_TO_AED,
+    monthlyInvoices: revibeMonthlyInvoices.map((inv: any) => ({
+      ...inv,
+      total_amount: inv.total_amount * USD_TO_AED,
+      cogs: inv.cogs * USD_TO_AED,
+      repair_cost: inv.repair_cost * USD_TO_AED,
+      net_profit: inv.net_profit * USD_TO_AED,
+      amount_paid: inv.amount_paid * USD_TO_AED,
+      balance_due: inv.balance_due * USD_TO_AED
+    })),
     platformBreakdown: {
-      amazon: {
-        ...platformStats.AMAZON,
-        revenue: platformStats.AMAZON.revenue * USD_TO_AED,
-        cogsDevices: platformStats.AMAZON.cogsDevices * USD_TO_AED,
-        cogsLogistics: platformStats.AMAZON.cogsLogistics * USD_TO_AED,
-        repairCost: platformStats.AMAZON.repairCost * USD_TO_AED,
-        otherExpenses: platformStats.AMAZON.otherExpenses * USD_TO_AED,
-        totalCost: platformStats.AMAZON.totalCost * USD_TO_AED,
-        grossProfit: platformStats.AMAZON.grossProfit * USD_TO_AED,
-        netProfit: platformStats.AMAZON.netProfit * USD_TO_AED
-      },
+      amazon: platformStats.AMAZON,
       revibe: {
         ...platformStats.REVIBE,
         revenue: platformStats.REVIBE.revenue * USD_TO_AED,
         cogsDevices: platformStats.REVIBE.cogsDevices * USD_TO_AED,
         cogsLogistics: platformStats.REVIBE.cogsLogistics * USD_TO_AED,
         repairCost: platformStats.REVIBE.repairCost * USD_TO_AED,
-        otherExpenses: platformStats.REVIBE.otherExpenses * USD_TO_AED,
         totalCost: platformStats.REVIBE.totalCost * USD_TO_AED,
         grossProfit: platformStats.REVIBE.grossProfit * USD_TO_AED,
         netProfit: platformStats.REVIBE.netProfit * USD_TO_AED
@@ -579,9 +595,11 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       revenue: totalRevenue,
       revenueWholesale: wholesaleRevenue,
       revenueOnline: onlineRevenue,
+      revenueRevibe: revibeRevenue,
       cogs: cogs,
       cogsWholesale: wholesaleCogs,
       cogsOnline: onlineCogs,
+      cogsRevibe: revibeTotalCost,
       cogsDevices: cogsDevices,
       cogsLogistics: cogsLogistics,
       wholesaleCogsDevices,
@@ -592,11 +610,13 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       grossProfit: grossProfit,
       grossProfitWholesale,
       grossProfitOnline,
+      grossProfitRevibe: revibeGrossProfit,
       amexProfit: amexProfit,
       freight: freightExpense,
       opex: totalOpex,
       opexByCategory: Object.values(opexByCategory),
       netProfit: netProfit,
+      netProfitRevibe: revibeNetProfit,
       inventoryAsset: inventoryValue + onlineUnsoldValue,
       inventoryAssetWholesale: inventoryValue,
       inventoryAssetOnline: onlineUnsoldValue,
@@ -612,6 +632,8 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       balanceSheet: {
         liquidCash,
         accountsReceivable,
+        accountsReceivableWholesale,
+        accountsReceivableRevibe,
         inventoryAsset: inventoryValue + onlineUnsoldValue,
         inventoryAssetWholesale: inventoryValue,
         inventoryAssetOnline: onlineUnsoldValue,
@@ -629,9 +651,11 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       revenue: totalRevenue * USD_TO_AED,
       revenueWholesale: wholesaleRevenue * USD_TO_AED,
       revenueOnline: onlineRevenue * USD_TO_AED,
+      revenueRevibe: revibeRevenue * USD_TO_AED,
       cogs: cogs * USD_TO_AED,
       cogsWholesale: wholesaleCogs * USD_TO_AED,
       cogsOnline: onlineCogs * USD_TO_AED,
+      cogsRevibe: revibeTotalCost * USD_TO_AED,
       cogsDevices: cogsDevices * USD_TO_AED,
       cogsLogistics: cogsLogistics * USD_TO_AED,
       wholesaleCogsDevices: wholesaleCogsDevices * USD_TO_AED,
@@ -642,11 +666,13 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       grossProfit: grossProfit * USD_TO_AED,
       grossProfitWholesale: grossProfitWholesale * USD_TO_AED,
       grossProfitOnline: grossProfitOnline * USD_TO_AED,
+      grossProfitRevibe: revibeGrossProfit * USD_TO_AED,
       amexProfit: amexProfit * USD_TO_AED,
       freight: freightExpense * USD_TO_AED,
       opex: totalOpex * USD_TO_AED,
       opexByCategory: Object.values(opexByCategory).map(c => ({ ...c, total: c.total * USD_TO_AED })),
       netProfit: netProfit * USD_TO_AED,
+      netProfitRevibe: revibeNetProfit * USD_TO_AED,
       inventoryAsset: (inventoryValue + onlineUnsoldValue) * USD_TO_AED,
       inventoryAssetWholesale: inventoryValue * USD_TO_AED,
       inventoryAssetOnline: onlineUnsoldValue * USD_TO_AED,
@@ -662,6 +688,8 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       balanceSheet: {
         liquidCash: liquidCash * USD_TO_AED,
         accountsReceivable: accountsReceivable * USD_TO_AED,
+        accountsReceivableWholesale: accountsReceivableWholesale * USD_TO_AED,
+        accountsReceivableRevibe: accountsReceivableRevibe * USD_TO_AED,
         inventoryAsset: (inventoryValue + onlineUnsoldValue) * USD_TO_AED,
         inventoryAssetWholesale: inventoryValue * USD_TO_AED,
         inventoryAssetOnline: onlineUnsoldValue * USD_TO_AED,

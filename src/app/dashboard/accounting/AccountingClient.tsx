@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { logExpense, editExpense, deleteExpense } from '@/lib/accounting/actions'
 import { createClient } from '@/lib/supabase/client'
 import { exportToExcel } from '@/lib/utils/exportExcel'
@@ -38,6 +39,21 @@ export type SkuFinancialMetric = {
   roi: number
 }
 
+export type MonthlyInvoiceMetric = {
+  id: string
+  invoice_number: string
+  issue_date: string
+  status: string
+  total_amount: number
+  units: number
+  cogs: number
+  repair_cost: number
+  net_profit: number
+  amount_paid: number
+  balance_due: number
+  roi: number
+}
+
 export type OnlineFinancialMetrics = {
   totalUnitsSold: number
   totalRevenue: number
@@ -54,6 +70,9 @@ export type OnlineFinancialMetrics = {
   avgSellingPrice: number
   avgCostPerUnit: number
   avgProfitPerUnit: number
+  totalPaid?: number
+  totalBalanceDue?: number
+  monthlyInvoices?: MonthlyInvoiceMetric[]
   platformBreakdown: {
     amazon: PlatformMetrics
     revibe: PlatformMetrics
@@ -65,9 +84,11 @@ export type FinancialSummary = {
   revenue: number
   revenueWholesale: number
   revenueOnline: number
+  revenueRevibe?: number
   cogs: number
   cogsWholesale: number
   cogsOnline: number
+  cogsRevibe?: number
   cogsDevices: number
   cogsLogistics: number
   wholesaleCogsDevices: number
@@ -78,10 +99,12 @@ export type FinancialSummary = {
   grossProfit: number
   grossProfitWholesale: number
   grossProfitOnline: number
+  grossProfitRevibe?: number
   amexProfit: number
   freight: number
   opex: number
   netProfit: number
+  netProfitRevibe?: number
   inventoryAsset: number
   inventoryAssetWholesale: number
   inventoryAssetOnline: number
@@ -103,6 +126,8 @@ export type FinancialSummary = {
   balanceSheet?: {
     liquidCash: number
     accountsReceivable: number
+    accountsReceivableWholesale?: number
+    accountsReceivableRevibe?: number
     inventoryAsset: number
     inventoryAssetWholesale: number
     inventoryAssetOnline: number
@@ -139,7 +164,7 @@ export default function AccountingClient({
 }) {
   const supabase = createClient()
   const [currency, setCurrency] = useState<'usd' | 'aed'>('usd')
-  const [activeTab, setActiveTab] = useState<'pnl' | 'online' | 'balance_sheet' | 'expenses'>('pnl')
+  const [activeTab, setActiveTab] = useState<'pnl' | 'online' | 'revibe' | 'balance_sheet' | 'expenses'>('pnl')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showExpenseModal, setShowExpenseModal] = useState(false)
@@ -175,20 +200,23 @@ export default function AccountingClient({
   const data = summary[currency] || summary.usd
   const om = data.onlineMetrics || {
     totalUnitsSold: 0,
-    totalRevenue: data.revenueOnline || 0,
+    totalRevenue: data.revenueRevibe ?? data.revenueOnline ?? 0,
     cogsDevices: data.onlineCogsDevices || 0,
     cogsLogistics: data.onlineCogsLogistics || 0,
     totalRepairCost: 0,
     otherExpenses: 0,
     totalCost: (data.onlineCogsDevices || 0) + (data.onlineCogsLogistics || 0),
-    grossProfit: data.grossProfitOnline || 0,
-    netProfit: data.grossProfitOnline || 0,
+    grossProfit: data.grossProfitRevibe ?? data.grossProfitOnline ?? 0,
+    netProfit: data.netProfitRevibe ?? data.grossProfitOnline ?? 0,
     roi: 0,
     grossMarginPct: 0,
     netMarginPct: 0,
     avgSellingPrice: 0,
     avgCostPerUnit: 0,
     avgProfitPerUnit: 0,
+    totalPaid: 0,
+    totalBalanceDue: 0,
+    monthlyInvoices: [],
     platformBreakdown: {
       amazon: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 },
       revibe: { unitsSold: 0, revenue: 0, cogsDevices: 0, cogsLogistics: 0, repairCost: 0, otherExpenses: 0, totalCost: 0, grossProfit: 0, netProfit: 0, roi: 0 }
@@ -442,7 +470,7 @@ export default function AccountingClient({
                   e.reference_link || ''
                 ])
                 exportToExcel('mobitech_expenses_export', headers, rows)
-              } else if (activeTab === 'online') {
+              } else if (activeTab === 'revibe' || activeTab === 'online') {
                 const headers = ['Model', 'Storage', 'Grade', 'Qty Sold', `Revenue (${currency.toUpperCase()})`, `Avg Price`, `Device Cost`, `Repair Cost`, `Total Cost`, `Net Profit`, `Profit/Unit`, 'ROI %']
                 const rows = (om.skuBreakdown || []).map(s => [
                   s.model,
@@ -458,16 +486,15 @@ export default function AccountingClient({
                   s.profitPerUnit,
                   `${s.roi.toFixed(1)}%`
                 ])
-                exportToExcel('mobitech_online_sales_pnl_export', headers, rows)
+                exportToExcel('mobitech_revibe_account_pnl_export', headers, rows)
               } else if (activeTab === 'balance_sheet') {
                 const bs = (data as any).balanceSheet
                 const headers = ['Category', 'Account Code & Description', `Amount (${currency.toUpperCase()})`]
                 const rows = [
                   ['ASSETS', '1010 - Cash & Liquid Treasury', bs?.liquidCash || 0],
-                  ['ASSETS', '1110 - Accounts Receivable (Wholesale)', bs?.accountsReceivable || 0],
-                  ['ASSETS', '1120 - Accounts Receivable (Online)', 0],
-                  ['ASSETS', '1210 - Inventory Asset (Wholesale)', bs?.inventoryAssetWholesale || 0],
-                  ['ASSETS', '1220 - Inventory Asset (Online)', bs?.inventoryAssetOnline || 0],
+                  ['ASSETS', '1110 - Accounts Receivable (Wholesale)', bs?.accountsReceivableWholesale ?? bs?.accountsReceivable ?? 0],
+                  ['ASSETS', '1120 - Accounts Receivable (REVIBE online)', bs?.accountsReceivableRevibe ?? 0],
+                  ['ASSETS', '1210 - Inventory Asset (Warehouse Stock)', bs?.inventoryAssetWholesale || bs?.inventoryAsset || 0],
                   ['ASSETS', 'TOTAL ASSETS', bs?.totalAssets || 0],
                   ['LIABILITIES', '2010 - Accounts Payable (Suppliers)', bs?.accountsPayable || 0],
                   ['LIABILITIES', '2020 - AMEX Credit Line Deployed', bs?.amexLiability || 0],
@@ -484,12 +511,11 @@ export default function AccountingClient({
                   ['Less: Logistics Cost (Deals)', data.wholesaleCogsLogistics],
                   ...((data.wholesaleRepairCost || 0) > 0 ? [['Less: Repair Cost (Deals)', data.wholesaleRepairCost || 0]] : []),
                   ['Wholesale Gross Profit', data.grossProfitWholesale],
-                  ['Online Sales Revenue', data.revenueOnline],
-                  ['Less: Cost of Goods (Online Base Stock)', om.cogsDevices],
-                  ['Less: Logistics Cost (Online Freight)', om.cogsLogistics],
+                  ['Revibe Invoiced Revenue', data.revenueRevibe ?? data.revenueOnline],
+                  ['Less: Cost of Goods (Base Stock)', om.cogsDevices],
+                  ['Less: Logistics Cost (Shipping Allocation)', om.cogsLogistics],
                   ['Less: Device Repair & Refurbishment Costs', om.totalRepairCost],
-                  ['Less: Online Platform & Marketing Expenses', om.otherExpenses],
-                  ['Online Net Profit', om.netProfit],
+                  ['Revibe Net Profit', om.netProfit],
                   ['Total Combined Revenue', data.revenue],
                   ['Less: Total Cost of Goods (Base Stock)', data.cogsDevices],
                   ['Less: Total Logistics Charges', data.cogsLogistics],
@@ -533,7 +559,7 @@ export default function AccountingClient({
       <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '24px' }}>
         {[
           { id: 'pnl', label: '📊 Profit & Loss (YTD)' },
-          { id: 'online', label: '🛒 Online Sales P&L & Performance' },
+          { id: 'revibe', label: '🛍️ Revibe Account (Monthly Invoices & P&L)' },
           { id: 'balance_sheet', label: '🏛️ Balance Sheet (GAAP)' },
           { id: 'expenses', label: '📄 Expense Ledger' }
         ].map(tab => (
@@ -560,40 +586,38 @@ export default function AccountingClient({
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 1. NEW DEDICATED TAB: ONLINE SALES P&L & PERFORMANCE          */}
       {/* ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'online' && (
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 1. REVIBE ONLINE ACCOUNT TAB: SETTLEMENTS & PROFITABILITY     */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {(activeTab === 'revibe' || activeTab === 'online') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           {/* Top 6 KPI Stat Cards Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             
-            {/* 1. Total Quantity Sold */}
+            {/* 1. Total Invoiced to Revibe */}
             <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #8b5cf6', padding: '18px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
-                Total Quantity Sold
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                {om.totalUnitsSold} <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>Units</span>
-              </div>
-              <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
-                <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontWeight: 600 }}>
-                  Amazon: {om.platformBreakdown.amazon.unitsSold}
-                </span>
-                <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', fontWeight: 600 }}>
-                  Revibe: {om.platformBreakdown.revibe.unitsSold}
-                </span>
-              </div>
-            </div>
-
-            {/* 2. Total Online Revenue */}
-            <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #3b82f6', padding: '18px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
-                Total Online Revenue
+                Total Revenue Billed (Revibe)
               </div>
               <div style={{ fontSize: '26px', fontWeight: 800, color: '#38bdf8' }}>
                 {formatCurrency(om.totalRevenue)}
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                Avg Selling Price: <strong>{formatCurrency(om.avgSellingPrice)}</strong>/unit
+                {om.totalUnitsSold} Units Sold • <strong>{formatCurrency(om.avgSellingPrice)}</strong>/unit
+              </div>
+            </div>
+
+            {/* 2. Landed Stock Cost */}
+            <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #3b82f6', padding: '18px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
+                Landed Stock Cost (COGS)
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {formatCurrency(om.cogsDevices + om.cogsLogistics)}
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                Stock: {formatCurrency(om.cogsDevices)} • Logistics: {formatCurrency(om.cogsLogistics)}
               </div>
             </div>
 
@@ -610,129 +634,141 @@ export default function AccountingClient({
               </div>
             </div>
 
-            {/* 4. Other Online Expenses */}
-            <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #ef4444', padding: '18px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
-                Other Online Expenses
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#f87171' }}>
-                {formatCurrency(om.otherExpenses)}
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                Platform fees, packaging & marketing
-              </div>
-            </div>
-
-            {/* 5. Net Online Profit */}
+            {/* 4. Net Realized Profit */}
             <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: `3px solid ${om.netProfit >= 0 ? '#10b981' : '#ef4444'}`, padding: '18px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
-                Net Online Profit
+                Net Realized Profit
               </div>
               <div style={{ fontSize: '26px', fontWeight: 800, color: om.netProfit >= 0 ? '#34d399' : '#f87171' }}>
                 {formatCurrency(om.netProfit)}
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                Net Margin: <strong>{om.netMarginPct.toFixed(1)}%</strong> • <strong>{formatCurrency(om.avgProfitPerUnit)}</strong>/unit
+                Margin: <strong>{om.netMarginPct.toFixed(1)}%</strong> • ROI: <strong>{om.roi.toFixed(1)}%</strong>
               </div>
             </div>
 
-            {/* 6. Return on Investment (ROI %) */}
-            <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #06b6d4', padding: '18px' }}>
+            {/* 5. Payments Collected */}
+            <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #10b981', padding: '18px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
-                Return on Investment (ROI)
+                Payments Collected
               </div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: om.roi >= 0 ? '#22d3ee' : '#f87171' }}>
-                {om.roi >= 0 ? '+' : ''}{om.roi.toFixed(1)}%
+              <div style={{ fontSize: '26px', fontWeight: 800, color: '#34d399' }}>
+                {formatCurrency(om.totalPaid || 0)}
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                Investment Base: <strong>{formatCurrency(om.totalCost)}</strong>
+                Historical wire transfers received
+              </div>
+            </div>
+
+            {/* 6. Outstanding Balance (AR) */}
+            <div className="log-sum-card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderTop: '3px solid #f59e0b', padding: '18px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
+                Outstanding A/R Balance
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 800, color: (om.totalBalanceDue || 0) > 0 ? '#f59e0b' : '#34d399' }}>
+                {formatCurrency(om.totalBalanceDue || 0)}
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                Due across monthly settlement statements
               </div>
             </div>
 
           </div>
 
-          {/* Platform Channel Breakdown (Amazon vs Revibe) */}
+          {/* Monthly Settlement Invoices Table */}
           <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
             <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Channel Performance Comparison</h3>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>Side-by-side performance matrix for Amazon and Revibe online selling channels</p>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Monthly Settlement Invoices (REVIBE online)</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>All sales converted into monthly statements billed to client REVIBE online. Click any invoice to edit model repair costs or record wire receipts.</p>
               </div>
+              <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', fontWeight: 600 }}>
+                {(om.monthlyInvoices || []).length} Monthly Statement(s)
+              </span>
             </div>
             
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '12px', textTransform: 'uppercase' }}>
-                    <th style={{ padding: '12px 18px' }}>Platform Channel</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'center' }}>Units Sold</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Gross Revenue</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Device Base Cost</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Logistics Cost</th>
+                    <th style={{ padding: '12px 18px' }}>Invoice #</th>
+                    <th style={{ padding: '12px 18px' }}>Issue Month</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'center' }}>Units</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Billed Total</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Landed Cost</th>
                     <th style={{ padding: '12px 18px', textAlign: 'right' }}>Repair Cost</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Total Investment</th>
                     <th style={{ padding: '12px 18px', textAlign: 'right' }}>Net Profit</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>ROI %</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Paid</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'right' }}>Balance Due</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'center' }}>Status</th>
+                    <th style={{ padding: '12px 18px', textAlign: 'center' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Amazon Row */}
-                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '14px 18px', fontWeight: 700 }}>
-                      <span style={{ padding: '3px 8px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '12px' }}>
-                        📦 Amazon FBA
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 18px', textAlign: 'center', fontWeight: 600 }}>{om.platformBreakdown.amazon.unitsSold}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(om.platformBreakdown.amazon.revenue)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>{formatCurrency(om.platformBreakdown.amazon.cogsDevices)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>{formatCurrency(om.platformBreakdown.amazon.cogsLogistics)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: '#fb923c' }}>{formatCurrency(om.platformBreakdown.amazon.repairCost)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(om.platformBreakdown.amazon.totalCost)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 700, color: om.platformBreakdown.amazon.netProfit >= 0 ? '#34d399' : '#f87171' }}>
-                      {formatCurrency(om.platformBreakdown.amazon.netProfit)}
-                    </td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 700, color: om.platformBreakdown.amazon.roi >= 0 ? '#22d3ee' : '#f87171' }}>
-                      {om.platformBreakdown.amazon.roi >= 0 ? '+' : ''}{om.platformBreakdown.amazon.roi.toFixed(1)}%
-                    </td>
-                  </tr>
+                  {(om.monthlyInvoices || []).map((inv: any) => {
+                    const statusBg = inv.status === 'PAID' 
+                      ? 'rgba(16, 185, 129, 0.15)' 
+                      : inv.status === 'PARTIAL' 
+                        ? 'rgba(245, 158, 11, 0.15)' 
+                        : 'rgba(239, 68, 68, 0.15)'
+                    const statusColor = inv.status === 'PAID' 
+                      ? '#34d399' 
+                      : inv.status === 'PARTIAL' 
+                        ? '#f59e0b' 
+                        : '#f87171'
 
-                  {/* Revibe Row */}
-                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '14px 18px', fontWeight: 700 }}>
-                      <span style={{ padding: '3px 8px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', fontSize: '12px' }}>
-                        🛍️ Revibe
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 18px', textAlign: 'center', fontWeight: 600 }}>{om.platformBreakdown.revibe.unitsSold}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(om.platformBreakdown.revibe.revenue)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>{formatCurrency(om.platformBreakdown.revibe.cogsDevices)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>{formatCurrency(om.platformBreakdown.revibe.cogsLogistics)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: '#fb923c' }}>{formatCurrency(om.platformBreakdown.revibe.repairCost)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(om.platformBreakdown.revibe.totalCost)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 700, color: om.platformBreakdown.revibe.netProfit >= 0 ? '#34d399' : '#f87171' }}>
-                      {formatCurrency(om.platformBreakdown.revibe.netProfit)}
-                    </td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 700, color: om.platformBreakdown.revibe.roi >= 0 ? '#22d3ee' : '#f87171' }}>
-                      {om.platformBreakdown.revibe.roi >= 0 ? '+' : ''}{om.platformBreakdown.revibe.roi.toFixed(1)}%
-                    </td>
-                  </tr>
+                    return (
+                      <tr key={inv.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '14px 18px', fontWeight: 700 }}>
+                          <Link href={`/dashboard/sales/${inv.id}`} style={{ color: 'var(--accent-purple)', textDecoration: 'none' }}>
+                            {inv.invoice_number}
+                          </Link>
+                        </td>
+                        <td style={{ padding: '14px 18px', color: 'var(--text-muted)' }}>
+                          {new Date(inv.issue_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'center', fontWeight: 600 }}>{inv.units}</td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(inv.total_amount)}</td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>{formatCurrency(inv.cogs)}</td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', color: '#fb923c' }}>{formatCurrency(inv.repair_cost)}</td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', fontWeight: 700, color: inv.net_profit >= 0 ? '#34d399' : '#f87171' }}>
+                          {formatCurrency(inv.net_profit)}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', color: '#34d399', fontWeight: 600 }}>{formatCurrency(inv.amount_paid)}</td>
+                        <td style={{ padding: '14px 18px', textAlign: 'right', color: inv.balance_due > 0 ? '#f59e0b' : 'var(--text-muted)', fontWeight: 600 }}>
+                          {formatCurrency(inv.balance_due)}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                          <span style={{ padding: '3px 8px', borderRadius: '4px', background: statusBg, color: statusColor, fontSize: '11px', fontWeight: 700 }}>
+                            {inv.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                          <Link href={`/dashboard/sales/${inv.id}`} className="btn-ghost" style={{ padding: '4px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid var(--border)', textDecoration: 'none', color: 'var(--text-primary)' }}>
+                            View & Repair →
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
 
-                  {/* Total Online Row */}
+                  {/* Total Invoices Summary Row */}
                   <tr style={{ background: 'rgba(255,255,255,0.03)', fontWeight: 800 }}>
-                    <td style={{ padding: '14px 18px', color: 'var(--accent-purple)' }}>TOTAL COMBINED ONLINE</td>
+                    <td style={{ padding: '14px 18px', color: 'var(--accent-purple)' }}>TOTAL REVIBE ACCOUNT</td>
+                    <td style={{ padding: '14px 18px', color: 'var(--text-muted)' }}>4 Months</td>
                     <td style={{ padding: '14px 18px', textAlign: 'center' }}>{om.totalUnitsSold}</td>
                     <td style={{ padding: '14px 18px', textAlign: 'right' }}>{formatCurrency(om.totalRevenue)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right' }}>{formatCurrency(om.cogsDevices)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right' }}>{formatCurrency(om.cogsLogistics)}</td>
+                    <td style={{ padding: '14px 18px', textAlign: 'right' }}>{formatCurrency(om.cogsDevices + om.cogsLogistics)}</td>
                     <td style={{ padding: '14px 18px', textAlign: 'right', color: '#fb923c' }}>{formatCurrency(om.totalRepairCost)}</td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right' }}>{formatCurrency(om.totalCost)}</td>
                     <td style={{ padding: '14px 18px', textAlign: 'right', color: om.netProfit >= 0 ? '#34d399' : '#f87171' }}>
                       {formatCurrency(om.netProfit)}
                     </td>
-                    <td style={{ padding: '14px 18px', textAlign: 'right', color: om.roi >= 0 ? '#22d3ee' : '#f87171' }}>
-                      {om.roi >= 0 ? '+' : ''}{om.roi.toFixed(1)}%
+                    <td style={{ padding: '14px 18px', textAlign: 'right', color: '#34d399' }}>{formatCurrency(om.totalPaid || 0)}</td>
+                    <td style={{ padding: '14px 18px', textAlign: 'right', color: (om.totalBalanceDue || 0) > 0 ? '#f59e0b' : '#34d399' }}>
+                      {formatCurrency(om.totalBalanceDue || 0)}
                     </td>
+                    <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--text-muted)' }}>-</td>
+                    <td style={{ padding: '14px 18px', textAlign: 'center', color: 'var(--text-muted)' }}>-</td>
                   </tr>
                 </tbody>
               </table>
@@ -846,17 +882,17 @@ export default function AccountingClient({
                 </div>
               </div>
 
-              {/* 2. Online Sales (Itemized with Repairs & ROI) */}
+              {/* 2. Revibe Online Sales Account */}
               <div style={{ padding: '14px 16px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600, color: 'var(--accent-purple)', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
-                  <span>Online Sales (Amazon & Revibe)</span>
+                  <span>Revibe Online Sales Account (Monthly Settlements)</span>
                   <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', fontWeight: 700 }}>
                     {om.totalUnitsSold} Units Sold • ROI: {om.roi.toFixed(1)}%
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Online Sales Revenue</span>
-                  <span style={{ fontWeight: 600 }}>{formatCurrency(data.revenueOnline)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Revibe Invoiced Revenue</span>
+                  <span style={{ fontWeight: 600 }}>{formatCurrency(data.revenueRevibe ?? data.revenueOnline)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
                   <span>Less: Cost of Goods (Base Device Stock)</span>
@@ -870,15 +906,13 @@ export default function AccountingClient({
                   <span>Less: Device Refurbishment & Repair Costs</span>
                   <span>- {formatCurrency(om.totalRepairCost)}</span>
                 </div>
-                {om.otherExpenses > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#f87171' }}>
-                    <span>Less: Online Marketing & Platform Expenses</span>
-                    <span>- {formatCurrency(om.otherExpenses)}</span>
-                  </div>
-                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '14px', borderTop: '1px dashed var(--border)', paddingTop: '4px', color: 'var(--accent-purple)' }}>
-                  <span>Online Net Profit</span>
+                  <span>Revibe Net Profit</span>
                   <span>{formatCurrency(om.netProfit)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', borderTop: '1px dotted var(--border)', paddingTop: '6px', color: 'var(--text-muted)' }}>
+                  <span>Collected: <strong style={{ color: '#34d399' }}>{formatCurrency(om.totalPaid || 0)}</strong></span>
+                  <span>Outstanding A/R: <strong style={{ color: (om.totalBalanceDue || 0) > 0 ? '#f59e0b' : '#34d399' }}>{formatCurrency(om.totalBalanceDue || 0)}</strong></span>
                 </div>
               </div>
 
@@ -1192,17 +1226,19 @@ export default function AccountingClient({
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                       <span style={{ color: 'var(--text-muted)' }}>Accounts Receivable (Wholesale)</span>
-                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.accountsReceivable)}</span>
+                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.accountsReceivableWholesale ?? bs.accountsReceivable)}</span>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Unsold Inventory (Wholesale)</span>
-                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.inventoryAssetWholesale || 0)}</span>
-                    </div>
+                    {(bs.accountsReceivableRevibe || 0) > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Accounts Receivable (REVIBE online)</span>
+                        <span style={{ fontWeight: 600, color: '#f59e0b' }}>{formatCurrency(bs.accountsReceivableRevibe)}</span>
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Unsold Inventory (Online Stock)</span>
-                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.inventoryAssetOnline || 0)}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>Unsold Inventory (Warehouse Deals Stock)</span>
+                      <span style={{ fontWeight: 600 }}>{formatCurrency(bs.inventoryAssetWholesale || bs.inventoryAsset || 0)}</span>
                     </div>
                   </div>
                 </div>

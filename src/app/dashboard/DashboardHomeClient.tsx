@@ -56,9 +56,9 @@ export default function DashboardHomeClient({ deals, settings, outstandingAR, su
   // 6. KPI Cards Config
   const kpiCards = [
     { label: 'Active Deals', value: activeDealsCount.toString(), sub: `${deals.length} total logged deals`, color: 'kpi-purple' },
-    { label: 'Online Units Sold', value: `${onlineMetrics.totalUnitsSold} units`, sub: `${fmt(onlineMetrics.totalRevenue)} online gross`, color: 'kpi-indigo' },
-    { label: 'Online Net Profit', value: fmt(onlineMetrics.netProfit), sub: `ROI: ${onlineMetrics.roi.toFixed(1)}%`, color: 'kpi-blue' },
-    { label: 'Total Net Profit (YTD)', value: fmt(netProfit), sub: 'Combined wholesale & online', color: 'kpi-green' },
+    { label: 'Revibe Units Sold', value: `${onlineMetrics.totalUnitsSold} units`, sub: `${fmt(onlineMetrics.totalRevenue)} billed to Revibe`, color: 'kpi-indigo' },
+    { label: 'Revibe Net Profit', value: fmt(onlineMetrics.netProfit), sub: `ROI: ${onlineMetrics.roi.toFixed(1)}%`, color: 'kpi-blue' },
+    { label: 'Total Net Profit (YTD)', value: fmt(netProfit), sub: 'Combined wholesale & Revibe', color: 'kpi-green' },
     { label: 'Inventory Value', value: fmt(inventoryAsset), sub: `${activeInventoryUnits} units in stock`, color: 'kpi-amber' },
     { label: 'Outstanding A/R', value: fmt(outstandingAR), sub: 'Unpaid wholesale invoices', color: 'kpi-rose' },
   ]
@@ -232,28 +232,28 @@ export default function DashboardHomeClient({ deals, settings, outstandingAR, su
           )}
         </div>
 
-        {/* Online Sales Performance */}
+        {/* Revibe Online Account Performance */}
         <div className="module-card">
           <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="module-icon">🛒</span>
-              <h2 className="module-title">Online Sales (Amazon & Revibe)</h2>
+              <span className="module-icon">🛍️</span>
+              <h2 className="module-title">Revibe Online Account</h2>
             </div>
             <Link href="/dashboard/accounting" style={{ fontSize: '11px', color: 'var(--accent-purple)', textDecoration: 'none', fontWeight: 600 }}>
-              Full P&L →
+              Full Account →
             </Link>
           </div>
           <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Total Units Sold</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Total Units Invoiced</span>
               <span style={{ fontWeight: 700, fontSize: '14px' }}>{onlineMetrics.totalUnitsSold} units</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Gross Online Sales</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Total Billed (Revibe)</span>
               <span style={{ fontWeight: 700, fontSize: '14px', color: '#38bdf8' }}>{fmt(onlineMetrics.totalRevenue)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Net Online Profit (ROI {onlineMetrics.roi.toFixed(1)}%)</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Net Revibe Profit (ROI {onlineMetrics.roi.toFixed(1)}%)</span>
               <span style={{ fontWeight: 700, fontSize: '14px', color: onlineMetrics.netProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                 {fmt(onlineMetrics.netProfit)}
               </span>

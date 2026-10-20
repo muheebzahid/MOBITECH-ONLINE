@@ -9,7 +9,6 @@ import { updateDealStatus, uploadDealDocument, deleteDealDocument } from '@/lib/
 import { addInventoryBulk } from '@/lib/inventory/actions'
 import { useRole } from '@/components/RoleProvider'
 import EditDealModal from '../EditDealModal'
-import MoveToOnlineModal from './MoveToOnlineModal'
 const STATUS_ORDER: DealStatus[] = [
   'AUCTION_WON','AWAITING_PAYMENT_LINK','PAYMENT_REQUIRED','PAID',
   'READY_FOR_PICKUP','IN_TRANSIT_USA','AT_SB_TECHNOLOGY','IN_TRANSIT_DUBAI',
@@ -85,7 +84,6 @@ export default function DealDetailClient({ deal }: Props) {
   const [showInventoryModal, setShowInventoryModal] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [moveOnlineSku, setMoveOnlineSku] = useState<any>(null)
 
   // Document Upload State
   const [docUploadPending, setDocUploadPending] = useState(false)
@@ -238,10 +236,9 @@ export default function DealDetailClient({ deal }: Props) {
       doc.text('Model', 17, y + 5)
       doc.text('Storage', 43, y + 5)
       doc.text('Grade', 61, y + 5)
-      doc.text('Stock+Fee', 73, y + 5)
-      doc.text('Ship/Unit', 96, y + 5)
-      doc.text('Repair/Unit', 119, y + 5)
-      doc.text('Total/Unit', 142, y + 5)
+      doc.text('Stock+Fee', 75, y + 5)
+      doc.text('Ship/Unit', 105, y + 5)
+      doc.text('Total Landed', 135, y + 5)
       doc.text('Total Cost', 165, y + 5)
       doc.text('Qty', 185, y + 5)
       y += 7
@@ -274,7 +271,7 @@ export default function DealDetailClient({ deal }: Props) {
 
         const unitBidCost = Number(item.unit_cost || 0)
         const stockPlusFeeCost = unitBidCost * (1 + dealFeeRate)
-        const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
+        const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
 
         const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
         const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -286,10 +283,9 @@ export default function DealDetailClient({ deal }: Props) {
         doc.text(item.model.substring(0, 15), 17, y + 5)
         doc.text(item.storage || '-', 43, y + 5)
         doc.text(item.grade || '-', 61, y + 5)
-        doc.text(fmt(stockPlusFeeCost), 73, y + 5)
-        doc.text(fmt(shippingCostPerUnit), 96, y + 5)
-        doc.text(fmt(Number(item.repair_cost || 0)), 119, y + 5)
-        doc.text(fmt(totalCostPerUnit), 142, y + 5)
+        doc.text(fmt(stockPlusFeeCost), 75, y + 5)
+        doc.text(fmt(shippingCostPerUnit), 105, y + 5)
+        doc.text(fmt(totalCostPerUnit), 135, y + 5)
         doc.text(fmtS(item.quantity * totalCostPerUnit), 165, y + 5)
         doc.text(String(itemRemaining), 185, y + 5)
         
@@ -826,11 +822,9 @@ export default function DealDetailClient({ deal }: Props) {
                     <th>Grade</th>
                     <th style={{textAlign:'right'}}>Stock + Fee Cost</th>
                     <th style={{textAlign:'right'}}>Shipping/Unit</th>
-                    <th style={{textAlign:'right'}}>Repair Cost/Unit</th>
-                    <th style={{textAlign:'right'}}>Total Cost/Unit</th>
+                    <th style={{textAlign:'right'}}>Landed Cost/Unit</th>
                     <th style={{textAlign:'right'}}>Target Price</th>
-                    <th style={{textAlign:'right'}}>Qty</th>
-                    <th style={{textAlign:'right'}}>Action</th>
+                    <th style={{textAlign:'right', paddingRight: 16}}>Qty</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -855,7 +849,7 @@ export default function DealDetailClient({ deal }: Props) {
 
                     const unitBidCost = Number(item.unit_cost || 0)
                     const stockPlusFeeCost = unitBidCost * (1 + skuFeeRate)
-                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
+                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                     const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -869,21 +863,9 @@ export default function DealDetailClient({ deal }: Props) {
                         <td>{item.grade || '-'}</td>
                         <td style={{textAlign:'right'}}>{fmt(stockPlusFeeCost)}</td>
                         <td style={{textAlign:'right', color:'var(--accent-teal)'}}>{fmt(shippingCostPerUnit)}</td>
-                        <td style={{textAlign:'right', color:'var(--accent-orange)'}}>{fmt(Number(item.repair_cost || 0))}</td>
                         <td style={{textAlign:'right', fontWeight:600, color:'var(--accent-indigo)'}}>{fmt(totalCostPerUnit)}</td>
                         <td style={{textAlign:'right', fontWeight:600}}>{fmt(item.target_price)}</td>
-                        <td style={{textAlign:'right', fontWeight: 600, color: availQty === 0 ? 'var(--text-muted)' : 'inherit'}}>{availQty}</td>
-                        <td style={{textAlign:'right'}}>
-                          {availQty > 0 && role !== 'VIEW_ONLY' && (
-                            <button 
-                              className="btn-ghost" 
-                              style={{fontSize: '11px', padding: '4px 8px'}}
-                              onClick={() => setMoveOnlineSku({ item, availQty, totalCostPerUnit })}
-                            >
-                              Move to Online
-                            </button>
-                          )}
-                        </td>
+                        <td style={{textAlign:'right', paddingRight: 16, fontWeight: 600, color: availQty === 0 ? 'var(--text-muted)' : 'inherit'}}>{availQty}</td>
                       </tr>
                     )
                   })}
@@ -906,7 +888,7 @@ export default function DealDetailClient({ deal }: Props) {
 
                     const unitBidCost = Number(item.unit_cost || 0)
                     const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
-                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + Number(item.repair_cost || 0)
+                    const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
 
                     const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                     const avgSalePrice = qtySold > 0 ? (totalSalesRevenue / qtySold) : 0
@@ -1136,8 +1118,7 @@ export default function DealDetailClient({ deal }: Props) {
 
                           const unitBidCost = Number(item.unit_cost || 0)
                           const stockPlusFeeCost = unitBidCost * (1 + salesFeeRate)
-                          const repairCostPerUnit = Number(item.repair_cost || 0)
-                          const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit + repairCostPerUnit
+                          const totalCostPerUnit = stockPlusFeeCost + shippingCostPerUnit
 
                           totalRemainingLandedCost += (availQty * totalCostPerUnit)
 
@@ -1145,7 +1126,6 @@ export default function DealDetailClient({ deal }: Props) {
                             const totalSalesRevenue = skuSales.reduce((sum: number, li: any) => sum + Number(li.total_price || (li.quantity * li.unit_price) || 0), 0)
                             
                             totalStockPlusFee += (qtySold * stockPlusFeeCost)
-                            totalRepairCost += (qtySold * repairCostPerUnit)
                             totalShippingCost += (qtySold * shippingCostPerUnit)
                             pureNetProfit += (totalSalesRevenue - (qtySold * totalCostPerUnit))
                           }
@@ -1185,8 +1165,7 @@ export default function DealDetailClient({ deal }: Props) {
                           const totalSold = (deal.invoice_line_items || []).reduce((sum: number, li: any) => sum + (li.quantity || 0), 0)
                           finalRemaining = Math.max(0, (deal.quantity || 0) - totalSold)
                           const dealFeePerUnit = (deal.quantity || 0) > 0 ? (salesTotalFees / deal.quantity) : 0
-                          const avgDealRepair = (deal.quantity || 0) > 0 ? (dealTotalRepairCost / deal.quantity) : 0
-                          const unitLandedCost = (Number(deal.unit_cost || 0)) + dealFeePerUnit + shippingCostPerUnit + avgDealRepair
+                          const unitLandedCost = (Number(deal.unit_cost || 0)) + dealFeePerUnit + shippingCostPerUnit
                           totalRemainingLandedCost = finalRemaining * unitLandedCost
                         }
 
@@ -1217,27 +1196,6 @@ export default function DealDetailClient({ deal }: Props) {
                               </span>
                               <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
                                 {fmtS(deal.total_revenue || 0)}
-                              </span>
-                            </div>
-
-                            {/* Total Repair Cost */}
-                            <div 
-                              title={dealTotalRepairCost > totalRepairCost ? `Sold: ${fmtS(totalRepairCost)} (Deal Batch Total: ${fmtS(dealTotalRepairCost)})` : undefined}
-                              style={{
-                                background: 'rgba(249, 115, 22, 0.06)',
-                                border: '1px solid rgba(249, 115, 22, 0.25)',
-                                borderRadius: '8px',
-                                padding: '10px 14px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '4px'
-                              }}
-                            >
-                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--accent-orange)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                Total Repair Cost
-                              </span>
-                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-orange)' }}>
-                                {fmtS(totalRepairCost)}
                               </span>
                             </div>
 
@@ -1687,17 +1645,6 @@ export default function DealDetailClient({ deal }: Props) {
             </div>
           </div>
         </div>
-      )}
-
-      {moveOnlineSku && (
-        <MoveToOnlineModal 
-          dealId={deal.id}
-          dealItemId={moveOnlineSku.item.id}
-          modelName={moveOnlineSku.item.model}
-          maxQty={moveOnlineSku.availQty}
-          totalLandedCost={moveOnlineSku.totalCostPerUnit}
-          onClose={() => setMoveOnlineSku(null)}
-        />
       )}
     </div>
   )

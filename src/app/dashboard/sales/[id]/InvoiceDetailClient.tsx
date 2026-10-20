@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { INVOICE_STATUSES, PAYMENT_METHODS, type InvoiceStatus } from '@/lib/sales/constants'
 import { 
@@ -16,7 +16,8 @@ import {
   updateLineItemDeal, 
   updateInvoiceStatus, 
   updateInvoiceBilledTo, 
-  updateInvoiceNumber 
+  updateInvoiceNumber,
+  updateInvoiceRepairCosts
 } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
@@ -70,6 +71,76 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
 
   const [dealSearchQuery, setDealSearchQuery] = useState('')
   const [showDealDropdown, setShowDealDropdown] = useState(false)
+
+  const modelGroups = useMemo(() => {
+    const map: Record<string, { model: string; quantity: number; revenue: number; landedCost: number; repairCost: number; lineItemIds: string[] }> = {}
+    
+    for (const li of (invoice.invoice_line_items || [])) {
+      const modelName = li.deal_items?.model || li.deals?.model || (li.description ? li.description.split(' - ')[0].replace(/\(.*?\)/g, '').trim() : 'General Item')
+      if (!map[modelName]) {
+        map[modelName] = {
+          model: modelName,
+          quantity: 0,
+          revenue: 0,
+          landedCost: 0,
+          repairCost: 0,
+          lineItemIds: []
+        }
+      }
+      const qty = Number(li.quantity) || 0
+      const rev = Number(li.total_price) || (qty * Number(li.unit_price || 0))
+      const unitCost = Number(li.deal_items?.unit_cost || li.deals?.unit_cost || 0)
+      
+      map[modelName].quantity += qty
+      map[modelName].revenue += rev
+      map[modelName].landedCost += (qty * unitCost)
+      map[modelName].repairCost += Number(li.repair_cost || 0)
+      map[modelName].lineItemIds.push(li.id)
+    }
+    return Object.values(map)
+  }, [invoice.invoice_line_items])
+
+  const [repairInputs, setRepairInputs] = useState<Record<string, string>>({})
+  const [isSavingRepairs, setIsSavingRepairs] = useState(false)
+  const [repairSuccess, setRepairSuccess] = useState('')
+
+  useEffect(() => {
+    const init: Record<string, string> = {}
+    for (const g of modelGroups) {
+      init[g.model] = String(g.repairCost || 0)
+    }
+    setRepairInputs(init)
+  }, [modelGroups])
+
+  const handleSaveRepairCosts = async () => {
+    setIsSavingRepairs(true)
+    setRepairSuccess('')
+    const modelCosts = modelGroups.map(g => ({
+      model: g.model,
+      repairCost: parseFloat(repairInputs[g.model] || '0') || 0
+    }))
+    const res = await updateInvoiceRepairCosts(invoice.id, modelCosts)
+    setIsSavingRepairs(false)
+    if (res.error) {
+      alert('Failed to save repair costs: ' + res.error)
+    } else {
+      setRepairSuccess('Repair costs saved successfully!')
+      router.refresh()
+    }
+  }
+
+  const totalInvoiceLandedCost = useMemo(() => {
+    return modelGroups.reduce((s, g) => s + g.landedCost, 0)
+  }, [modelGroups])
+
+  const totalInvoiceRepairCost = useMemo(() => {
+    if (Object.keys(repairInputs).length === 0) return Number(invoice.repair_cost || 0)
+    return Object.values(repairInputs).reduce((sum, val) => sum + (parseFloat(val) || 0), 0)
+  }, [repairInputs, invoice.repair_cost])
+
+  const invoiceNetProfit = Number(invoice.total_amount || 0) - totalInvoiceLandedCost - totalInvoiceRepairCost
+  const invoiceTotalCost = totalInvoiceLandedCost + totalInvoiceRepairCost
+  const invoiceRoi = invoiceTotalCost > 0 ? (invoiceNetProfit / invoiceTotalCost) * 100 : 0
 
   const getSelectedDealLabel = () => {
     const dId = liForm.deal_id
@@ -684,8 +755,121 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
             </table>
           </div>
 
+          {/* Model Repair Cost Breakdown Table */}
+          {modelGroups.length > 0 && (
+            <div className="no-print" style={{ marginTop: '28px', padding: '18px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🔧</span> Model Repair Costs & Profitability Breakdown
+                  </h3>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Add or update total repair costs for specific models on this invoice. Repair expenses are deducted to calculate true net profit.
+                  </span>
+                </div>
+                {role !== 'VIEW_ONLY' && (
+                  <button 
+                    className="btn-primary" 
+                    style={{ fontSize: '12px', padding: '6px 14px' }} 
+                    onClick={handleSaveRepairCosts}
+                    disabled={isSavingRepairs}
+                  >
+                    {isSavingRepairs ? 'Saving Repairs...' : 'Save Repair Costs'}
+                  </button>
+                )}
+              </div>
+
+              {repairSuccess && (
+                <div style={{ padding: '8px 12px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '6px', color: '#22c55e', fontSize: '12px', marginBottom: '14px' }}>
+                  ✓ {repairSuccess}
+                </div>
+              )}
+
+              <div style={{ overflowX: 'auto' }}>
+                <table className="deals-table" style={{ border: 'none', margin: 0, width: '100%' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <th style={{ paddingLeft: 8 }}>Model</th>
+                      <th style={{ textAlign: 'right' }}>Units</th>
+                      <th style={{ textAlign: 'right' }}>Total Revenue</th>
+                      <th style={{ textAlign: 'right' }}>Landed Cost (COGS)</th>
+                      <th style={{ textAlign: 'right', width: '180px' }}>Total Repair Cost ($)</th>
+                      <th style={{ textAlign: 'right', paddingRight: 8 }}>Net Profit</th>
+                      <th style={{ textAlign: 'right', paddingRight: 8 }}>ROI %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modelGroups.map(g => {
+                      const inputVal = repairInputs[g.model] !== undefined ? repairInputs[g.model] : String(g.repairCost || 0)
+                      const currentRepair = parseFloat(inputVal) || 0
+                      const modelNetProfit = g.revenue - g.landedCost - currentRepair
+                      const modelCostBase = g.landedCost + currentRepair
+                      const modelRoi = modelCostBase > 0 ? (modelNetProfit / modelCostBase) * 100 : 0
+                      return (
+                        <tr key={g.model} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                          <td style={{ paddingLeft: 8, fontWeight: 600 }}>{g.model}</td>
+                          <td style={{ textAlign: 'right' }}>{g.quantity}</td>
+                          <td style={{ textAlign: 'right' }}>{fmt(g.revenue)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmt(g.landedCost)}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            {role !== 'VIEW_ONLY' ? (
+                              <input 
+                                type="number" 
+                                step="any" 
+                                min="0" 
+                                className="form-input" 
+                                style={{ textAlign: 'right', width: '140px', padding: '4px 8px', fontSize: '12px', display: 'inline-block' }}
+                                placeholder="0.00"
+                                value={inputVal}
+                                onChange={e => setRepairInputs(prev => ({ ...prev, [g.model]: e.target.value }))}
+                              />
+                            ) : (
+                              <span>{fmt(currentRepair)}</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right', paddingRight: 8, fontWeight: 700, color: modelNetProfit >= 0 ? '#22c55e' : '#ef4444' }}>
+                            {fmt(modelNetProfit)}
+                          </td>
+                          <td style={{ textAlign: 'right', paddingRight: 8, fontWeight: 700, color: modelRoi >= 0 ? '#22c55e' : '#ef4444' }}>
+                            {modelCostBase > 0 ? `${modelRoi >= 0 ? '+' : ''}${modelRoi.toFixed(1)}%` : '0.0%'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    {(() => {
+                      const totalUnits = modelGroups.reduce((s, g) => s + g.quantity, 0)
+                      const totalRev = modelGroups.reduce((s, g) => s + g.revenue, 0)
+                      const totalLanded = totalInvoiceLandedCost
+                      const totalRepair = totalInvoiceRepairCost
+                      const totalNet = totalRev - totalLanded - totalRepair
+                      const totalCost = totalLanded + totalRepair
+                      const totalRoi = totalCost > 0 ? (totalNet / totalCost) * 100 : 0
+                      return (
+                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, background: 'rgba(255, 255, 255, 0.02)' }}>
+                          <td style={{ paddingLeft: 8 }}>Total</td>
+                          <td style={{ textAlign: 'right' }}>{totalUnits}</td>
+                          <td style={{ textAlign: 'right' }}>{fmt(totalRev)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmt(totalLanded)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmt(totalRepair)}</td>
+                          <td style={{ textAlign: 'right', paddingRight: 8, color: totalNet >= 0 ? '#22c55e' : '#ef4444' }}>
+                            {fmt(totalNet)}
+                          </td>
+                          <td style={{ textAlign: 'right', paddingRight: 8, color: totalRoi >= 0 ? '#22c55e' : '#ef4444' }}>
+                            {totalCost > 0 ? `${totalRoi >= 0 ? '+' : ''}${totalRoi.toFixed(1)}%` : '0.0%'}
+                          </td>
+                        </tr>
+                      )
+                    })()}
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div style={{ display:'flex', justifyContent:'flex-end', marginTop:'24px' }}>
-            <div style={{ width:'250px', fontSize:'13px' }}>
+            <div style={{ width:'280px', fontSize:'13px' }}>
               <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border-subtle)' }}>
                 <span style={{ color:'var(--text-muted)' }}>Subtotal</span>
                 <strong>{fmt(invoice.subtotal)}</strong>
@@ -696,15 +880,36 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                   <strong>-{fmt(invoice.discount)}</strong>
                 </div>
               )}
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 0', fontSize:'16px', borderBottom:'2px solid var(--border)' }}>
-                <span><strong>Total</strong></span>
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:'15px', borderBottom:'2px solid var(--border)' }}>
+                <span><strong>Total Billed</strong></span>
                 <strong>{fmt(invoice.total_amount)}</strong>
               </div>
+              
+              {/* Financial Deductions & Profitability */}
+              <div className="no-print" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', color:'var(--text-muted)', fontSize:'12px' }}>
+                <span>Landed Stock Cost</span>
+                <span>-{fmt(totalInvoiceLandedCost)}</span>
+              </div>
+              <div className="no-print" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', color:'var(--accent-orange)', fontSize:'12px' }}>
+                <span>Total Repair Cost</span>
+                <span>-{fmt(totalInvoiceRepairCost)}</span>
+              </div>
+              <div className="no-print" style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderTop:'1px dashed var(--border-subtle)' }}>
+                <span><strong>Invoice Net Profit</strong></span>
+                <strong style={{ color: invoiceNetProfit >= 0 ? '#22c55e' : '#ef4444' }}>{fmt(invoiceNetProfit)}</strong>
+              </div>
+              <div className="no-print" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border-subtle)' }}>
+                <span><strong>Invoice ROI</strong></span>
+                <strong style={{ color: invoiceRoi >= 0 ? '#22c55e' : '#ef4444' }}>
+                  {invoiceTotalCost > 0 ? `${invoiceRoi >= 0 ? '+' : ''}${invoiceRoi.toFixed(1)}%` : '0.0%'}
+                </strong>
+              </div>
+
               <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', color:'#22c55e' }}>
                 <span>Paid</span>
                 <strong>{fmt(invoice.amount_paid)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 0', fontSize:'18px', marginTop:'8px' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 0', fontSize:'18px', marginTop:'4px' }}>
                 <span><strong>Balance Due</strong></span>
                 <strong style={{ color: invoice.balance_due > 0 ? '#fb923c' : 'inherit' }}>{fmt(invoice.balance_due)}</strong>
               </div>

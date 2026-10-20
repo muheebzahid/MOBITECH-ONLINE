@@ -52,7 +52,7 @@ export async function getInvoiceById(id: string) {
       .from('invoices')
       .select(`
         *,
-        invoice_line_items(*, deals(deal_number, model, storage, grade)),
+        invoice_line_items(*, deals(deal_number, model, storage, grade), deal_items(model, storage, grade, unit_cost)),
         payments(*),
         invoice_documents(*)
       `)
@@ -66,7 +66,7 @@ export async function getInvoiceById(id: string) {
         .from('invoices')
         .select(`
           *,
-          invoice_line_items(*, deals(deal_number, model, storage, grade)),
+          invoice_line_items(*, deals(deal_number, model, storage, grade), deal_items(model, storage, grade, unit_cost)),
           payments(*)
         `)
         .eq('id', id)
@@ -746,3 +746,57 @@ export async function deletePayment(invoiceId: string, paymentId: string) {
   revalidatePath('/dashboard/sales')
   return { success: true }
 }
+
+export async function updateInvoiceRepairCosts(
+  invoiceId: string,
+  modelCosts: { model: string; repairCost: number }[]
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { getUserRole } = await import('@/lib/admin/actions')
+  const role = await getUserRole()
+  if (role === 'VIEW_ONLY') return { error: 'Read only access' }
+
+  const { data: lineItems, error: liErr } = await supabase
+    .from('invoice_line_items')
+    .select('id, description, quantity')
+    .eq('invoice_id', invoiceId)
+
+  if (liErr) return { error: liErr.message }
+
+  let totalInvoiceRepair = 0
+
+  for (const mc of modelCosts) {
+    const cost = Math.max(0, Number(mc.repairCost) || 0)
+    totalInvoiceRepair += cost
+
+    const matchingItems = (lineItems || []).filter(li => 
+      (li.description || '').toLowerCase().includes(mc.model.toLowerCase())
+    )
+
+    const totalQty = matchingItems.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+    for (const it of matchingItems) {
+      const itQty = Number(it.quantity) || 0
+      const itShare = totalQty > 0 ? (itQty / totalQty) * cost : cost
+      await supabase
+        .from('invoice_line_items')
+        .update({ repair_cost: Number(itShare.toFixed(2)) })
+        .eq('id', it.id)
+    }
+  }
+
+  const { error: invErr } = await supabase
+    .from('invoices')
+    .update({ repair_cost: Number(totalInvoiceRepair.toFixed(2)), updated_at: new Date().toISOString() })
+    .eq('id', invoiceId)
+
+  if (invErr) return { error: invErr.message }
+
+  revalidatePath(`/dashboard/sales/${invoiceId}`)
+  revalidatePath('/dashboard/sales')
+  revalidatePath('/dashboard/accounting')
+  return { success: true, totalRepairCost: totalInvoiceRepair }
+}
+
