@@ -17,10 +17,13 @@ import {
   updateInvoiceStatus, 
   updateInvoiceBilledTo, 
   updateInvoiceNumber,
-  updateInvoiceRepairCosts
+  updateInvoiceRepairCosts,
+  getSalesPriceHistoryAction,
+  type SalesPriceHistorySummary
 } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
 import UpdateLiveSyncModal from '@/components/sync/UpdateLiveSyncModal'
+import SalesPriceHistoryModal from '@/app/dashboard/sales/SalesPriceHistoryModal'
 
 function fmt(n: number) {
   const parts = Number(n || 0).toString().split('.')
@@ -71,6 +74,58 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
 
   const [dealSearchQuery, setDealSearchQuery] = useState('')
   const [showDealDropdown, setShowDealDropdown] = useState(false)
+
+  // Sales price history & cost visibility
+  const [historyModalOpen, setHistoryModalOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historySummary, setHistorySummary] = useState<SalesPriceHistorySummary | null>(null)
+
+  const handleOpenPriceHistory = async (target: {
+    model?: string
+    storage?: string
+    grade?: string
+    description?: string
+  }) => {
+    setHistoryLoading(true)
+    setHistoryModalOpen(true)
+    setHistorySummary(null)
+    try {
+      const summary = await getSalesPriceHistoryAction({
+        model: target.model,
+        storage: target.storage,
+        grade: target.grade,
+        description: target.description,
+        clientId: invoice.client_id || undefined,
+        customerName: invoice.customer_name || undefined
+      })
+      setHistorySummary(summary)
+    } catch (err: any) {
+      console.error('Failed to load sales history:', err)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const getItemCostData = (item: any) => {
+    const deal = item.deals
+    const dealItem = item.deal_items
+    
+    let unitCost = 0
+    if (dealItem?.unit_cost) {
+      unitCost = Number(dealItem.unit_cost) || 0
+    } else if (deal?.unit_cost) {
+      unitCost = Number(deal.unit_cost) || 0
+    } else if (deal && deal.total_commitment && deal.quantity) {
+      unitCost = (Number(deal.total_commitment) || 0) / (Number(deal.quantity) || 1)
+    }
+
+    const unitPrice = Number(item.unit_price) || 0
+    const hasCost = unitCost > 0
+    const profitPerUnit = unitPrice - unitCost
+    const marginPct = unitPrice > 0 ? (profitPerUnit / unitPrice) * 100 : 0
+
+    return { unitCost, hasCost, profitPerUnit, marginPct }
+  }
 
   const modelGroups = useMemo(() => {
     const map: Record<string, { model: string; quantity: number; revenue: number; landedCost: number; repairCost: number; lineItemIds: string[] }> = {}
@@ -205,6 +260,41 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   }
 
   const [liForm, setLiForm] = useState({ deal_id: '', deal_item_id: '', description: '', quantity: '1', unit_price: '' })
+
+  const selectedDealCost = useMemo(() => {
+    if (!liForm.deal_id) return null
+    const deal = deals.find(d => d.id === liForm.deal_id)
+    if (!deal) return null
+
+    let unitCost = 0
+    let model = deal.model || ''
+    let storage = deal.storage || ''
+    let grade = deal.grade || ''
+
+    if (liForm.deal_item_id && deal.items) {
+      const item = deal.items.find((i: any) => i.id === liForm.deal_item_id)
+      if (item) {
+        unitCost = Number(item.unit_cost) || 0
+        model = item.model || model
+        storage = item.storage || storage
+        grade = item.grade || grade
+      }
+    }
+
+    if (unitCost === 0) {
+      unitCost = Number(deal.unit_cost) || 0
+      if (unitCost === 0 && deal.total_commitment && deal.quantity) {
+        unitCost = (Number(deal.total_commitment) || 0) / (Number(deal.quantity) || 1)
+      }
+    }
+
+    const unitPrice = parseFloat(liForm.unit_price) || 0
+    const profit = unitPrice > 0 && unitCost > 0 ? unitPrice - unitCost : null
+    const margin = unitPrice > 0 && profit !== null ? (profit / unitPrice) * 100 : null
+
+    return { unitCost, unitPrice, profit, margin, model, storage, grade }
+  }, [liForm.deal_id, liForm.deal_item_id, liForm.unit_price, deals])
+
   const [payForm, setPayForm] = useState({ amount: invoice.balance_due.toString(), payment_date: new Date().toISOString().split('T')[0], payment_method: 'WIRE_TRANSFER', reference_number: '', notes: '' })
 
   const st = INVOICE_STATUSES[invoice.status as InvoiceStatus]
@@ -686,57 +776,101 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {(invoice.invoice_line_items || []).map((item: any) => (
-                  <tr key={item.id}>
-                    <td style={{paddingLeft:0}}>
-                      <div style={{ fontWeight:600 }}>{item.description}</div>
-                      {editingLineItem === item.id ? (
-                        <div style={{ marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <select className="form-input" style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', width: '200px' }} value={editDealId} onChange={e=>setEditDealId(e.target.value)}>
-                            <option value="">No link / Custom item</option>
-                            {deals.map(d => {
-                              if (d.items && d.items.length > 0) {
-                                return (
-                                  <optgroup key={d.id} label={`${d.deal_number} - ${d.model} (${d.remaining_quantity} avail)`}>
-                                    <option value={d.id}>
-                                      [Whole Deal] {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
-                                    </option>
-                                    {d.items.map((it: any) => (
-                                      <option key={it.id} value={`${d.id}:${it.id}`}>
-                                        {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
+                {(invoice.invoice_line_items || []).map((item: any) => {
+                  const costData = getItemCostData(item)
+                  return (
+                    <tr key={item.id}>
+                      <td style={{paddingLeft:0}}>
+                        <div style={{ fontWeight:600 }}>{item.description}</div>
+                        {editingLineItem === item.id ? (
+                          <div style={{ marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <select className="form-input" style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', width: '200px' }} value={editDealId} onChange={e=>setEditDealId(e.target.value)}>
+                              <option value="">No link / Custom item</option>
+                              {deals.map(d => {
+                                if (d.items && d.items.length > 0) {
+                                  return (
+                                    <optgroup key={d.id} label={`${d.deal_number} - ${d.model} (${d.remaining_quantity} avail)`}>
+                                      <option value={d.id}>
+                                        [Whole Deal] {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
                                       </option>
-                                    ))}
-                                  </optgroup>
+                                      {d.items.map((it: any) => (
+                                        <option key={it.id} value={`${d.id}:${it.id}`}>
+                                          {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )
+                                }
+                                return (
+                                  <option key={d.id} value={d.id}>{d.deal_number} - {d.model} {[d.storage, d.grade, d.carrier].filter(Boolean).join(' ')} ({d.remaining_quantity} avail)</option>
                                 )
-                              }
-                              return (
-                                <option key={d.id} value={d.id}>{d.deal_number} - {d.model} {[d.storage, d.grade, d.carrier].filter(Boolean).join(' ')} ({d.remaining_quantity} avail)</option>
-                              )
-                            })}
-                          </select>
-                          <button className="btn-primary" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => {
-                            const [dId, dItemId] = editDealId.split(':')
-                            handleUpdateLineItemDeal(item.id, dId, dItemId)
-                          }}>Save</button>
-                          <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => setEditingLineItem(null)}>Cancel</button>
-                        </div>
-                      ) : (
-                        <div className="no-print" style={{ fontSize:'11px', color: item.deals ? '#22c55e' : '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {item.deals ? `Deal Ref: ${item.deals.deal_number} (${item.deals.model})` : 'No deal linked'}
-                          {role === 'SUPER_ADMIN' && (
-                            <button className="btn-ghost no-print" style={{ color: 'var(--accent-indigo)', padding: 0, fontSize: '11px' }} onClick={() => { setEditingLineItem(item.id); setEditDealId(item.deal_item_id ? `${item.deal_id}:${item.deal_item_id}` : (item.deal_id || '')); }}>Edit Source</button>
-                          )}
-                        </div>
+                              })}
+                            </select>
+                            <button className="btn-primary" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => {
+                              const [dId, dItemId] = editDealId.split(':')
+                              handleUpdateLineItemDeal(item.id, dId, dItemId)
+                            }}>Save</button>
+                            <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => setEditingLineItem(null)}>Cancel</button>
+                          </div>
+                        ) : (
+                          <div className="no-print" style={{ fontSize:'11px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px' }}>
+                            <span style={{ color: item.deals ? '#22c55e' : '#f87171' }}>
+                              {item.deals ? `Deal Ref: ${item.deals.deal_number} (${item.deals.model})` : 'No deal linked'}
+                            </span>
+                            {role === 'SUPER_ADMIN' && (
+                              <button className="btn-ghost no-print" style={{ color: 'var(--accent-indigo)', padding: 0, fontSize: '11px' }} onClick={() => { setEditingLineItem(item.id); setEditDealId(item.deal_item_id ? `${item.deal_id}:${item.deal_item_id}` : (item.deal_id || '')); }}>Edit Source</button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn-ghost no-print"
+                              style={{
+                                color: 'var(--accent-cyan, #06b6d4)',
+                                padding: '2px 8px',
+                                fontSize: '11px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: 'rgba(6, 182, 212, 0.08)',
+                                borderRadius: '4px',
+                                border: '1px solid rgba(6, 182, 212, 0.2)',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => handleOpenPriceHistory({
+                                model: item.deal_items?.model || item.deals?.model,
+                                storage: item.deal_items?.storage || item.deals?.storage,
+                                grade: item.deal_items?.grade || item.deals?.grade,
+                                description: item.description
+                              })}
+                              title="Check past sales prices for this item"
+                            >
+                              <span>📊</span> Check Sales Price History
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{textAlign:'right'}}>{item.quantity}</td>
+                      <td style={{textAlign:'right'}}>
+                        <div>{fmt(item.unit_price)}</div>
+                        {costData.hasCost && (
+                          <div className="no-print" style={{ fontSize: '11px', marginTop: '3px', lineHeight: 1.2 }}>
+                            <span style={{ color: 'var(--text-muted)' }}>Cost: {fmt(costData.unitCost)}</span>
+                            <span style={{ 
+                              marginLeft: '6px', 
+                              fontWeight: 600, 
+                              color: costData.profitPerUnit >= 0 ? '#22c55e' : '#ef4444' 
+                            }}>
+                              {costData.profitPerUnit >= 0 ? '+' : ''}{fmt(costData.profitPerUnit)} ({costData.marginPct.toFixed(1)}%)
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{textAlign:'right', paddingRight:0, fontWeight:600}}>{fmt(item.total_price)}</td>
+                      {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
+                        <td style={{width:'30px'}} className="no-print"><button className="btn-ghost" style={{color:'#f87171', padding:'4px 8px'}} onClick={()=>handleRemoveLineItem(item.id)}>✕</button></td>
                       )}
-                    </td>
-                    <td style={{textAlign:'right'}}>{item.quantity}</td>
-                    <td style={{textAlign:'right'}}>{fmt(item.unit_price)}</td>
-                    <td style={{textAlign:'right', paddingRight:0, fontWeight:600}}>{fmt(item.total_price)}</td>
-                    {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
-                      <td style={{width:'30px'}} className="no-print"><button className="btn-ghost" style={{color:'#f87171', padding:'4px 8px'}} onClick={()=>handleRemoveLineItem(item.id)}>✕</button></td>
-                    )}
-                  </tr>
-                ))}
+                    </tr>
+                  )
+                })}
                 {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
                   <tr className="no-print">
                     <td colSpan={5} style={{paddingLeft:0}}>
@@ -1366,8 +1500,49 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
                   <input type="number" className="form-input" value={liForm.quantity} onChange={e=>setLiForm(f=>({...f,quantity:e.target.value}))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Unit Price ($) *</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="form-label" style={{ marginBottom: 0 }}>Unit Price ($) *</label>
+                    {(liForm.description || liForm.deal_id) && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{
+                          padding: '1px 6px',
+                          fontSize: '11px',
+                          color: 'var(--accent-cyan, #06b6d4)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => handleOpenPriceHistory({
+                          model: selectedDealCost?.model,
+                          storage: selectedDealCost?.storage,
+                          grade: selectedDealCost?.grade,
+                          description: liForm.description
+                        })}
+                      >
+                        <span>📊</span> Price History
+                      </button>
+                    )}
+                  </div>
                   <input type="number" className="form-input" placeholder="0.00" value={liForm.unit_price} onChange={e=>setLiForm(f=>({...f,unit_price:e.target.value}))} />
+                  {selectedDealCost && selectedDealCost.unitCost > 0 && (
+                    <div style={{ marginTop: '6px', padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '11px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Deal Unit Cost:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(selectedDealCost.unitCost)}</span>
+                      </div>
+                      {selectedDealCost.profit !== null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Est. Margin:</span>
+                          <span style={{ fontWeight: 700, color: selectedDealCost.profit >= 0 ? '#22c55e' : '#ef4444' }}>
+                            {selectedDealCost.profit >= 0 ? '+' : ''}{fmt(selectedDealCost.profit)} ({selectedDealCost.margin?.toFixed(1)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               {error && <div className="login-error">&#9888; {error}</div>}
@@ -1438,6 +1613,16 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
           }}
         />
       )}
+
+      {/* Sales Price History Modal */}
+      <SalesPriceHistoryModal
+        isOpen={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        summary={historySummary}
+        isLoading={historyLoading}
+        currentCustomerId={invoice.client_id || invoice.customer_id}
+        currentCustomerName={invoice.customer_name}
+      />
     </div>
   )
 }

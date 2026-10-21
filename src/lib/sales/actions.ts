@@ -52,7 +52,7 @@ export async function getInvoiceById(id: string) {
       .from('invoices')
       .select(`
         *,
-        invoice_line_items(*, deals(deal_number, model, storage, grade), deal_items(model, storage, grade, unit_cost)),
+        invoice_line_items(*, deals(id, deal_number, model, storage, grade, unit_cost, total_commitment, quantity, auction_fee, other_fees), deal_items(id, model, storage, grade, unit_cost, repair_cost)),
         payments(*),
         invoice_documents(*)
       `)
@@ -66,7 +66,7 @@ export async function getInvoiceById(id: string) {
         .from('invoices')
         .select(`
           *,
-          invoice_line_items(*, deals(deal_number, model, storage, grade), deal_items(model, storage, grade, unit_cost)),
+          invoice_line_items(*, deals(id, deal_number, model, storage, grade, unit_cost, total_commitment, quantity, auction_fee, other_fees), deal_items(id, model, storage, grade, unit_cost, repair_cost)),
           payments(*)
         `)
         .eq('id', id)
@@ -536,7 +536,7 @@ export async function getAvailableDeals() {
     const { data, error } = await adminClient
       .from('deals')
       .select(`
-        id, deal_number, model, storage, grade, quantity,
+        id, deal_number, model, storage, grade, quantity, unit_cost, total_commitment, auction_fee, other_fees,
         items:deal_items(*),
         invoice_line_items(deal_id, deal_item_id, quantity, invoices(status))
       `)
@@ -799,4 +799,187 @@ export async function updateInvoiceRepairCosts(
   revalidatePath('/dashboard/accounting')
   return { success: true, totalRepairCost: totalInvoiceRepair }
 }
+
+export type SalesPriceHistoryItem = {
+  id: string
+  invoice_id: string
+  invoice_number: string
+  issue_date: string
+  customer_name: string
+  client_id: string | null
+  quantity: number
+  unit_price: number
+  total_price: number
+  description: string
+  model?: string | null
+  storage?: string | null
+  grade?: string | null
+}
+
+export type SalesPriceHistorySummary = {
+  queryModel: string
+  queryStorage: string
+  queryGrade: string
+  lastSoldPrice: number | null
+  lastSoldDate: string | null
+  avgSoldPrice: number | null
+  minSoldPrice: number | null
+  maxSoldPrice: number | null
+  totalUnitsSold: number
+  totalRevenue: number
+  customerLastSoldPrice: number | null
+  customerAvgSoldPrice: number | null
+  customerUnitsSold: number
+  customerName?: string | null
+  items: SalesPriceHistoryItem[]
+}
+
+export async function getSalesPriceHistoryAction(params: {
+  model?: string
+  storage?: string
+  grade?: string
+  description?: string
+  clientId?: string
+  customerName?: string
+}): Promise<SalesPriceHistorySummary> {
+  try {
+    const adminClient = getAdminClient()
+    const desc = params.description || ''
+    
+    // Parse model & storage if not directly provided
+    let parsedModel = (params.model || '').trim()
+    let parsedStorage = (params.storage || '').trim().toUpperCase()
+    let parsedGrade = (params.grade || '').trim()
+
+    if (!parsedModel && desc) {
+      const modelMatch = desc.match(/(iPhone\s+[^\s]+(?:\s+(?:Pro\s+Max|Pro|Plus|Mini))?)/i)
+      if (modelMatch) parsedModel = modelMatch[1].trim()
+      else {
+        const upper = desc.toUpperCase()
+        const m = upper.match(/(IPHONE\s+\d+(\s+PRO(\s+MAX)?)?|\bIPHONE\s+SE\b)/i)
+        if (m) parsedModel = m[0].trim()
+      }
+    }
+
+    if (!parsedStorage && desc) {
+      const storageMatch = desc.match(/(64GB|128GB|256GB|512GB|1TB)/i)
+      if (storageMatch) parsedStorage = storageMatch[1].toUpperCase()
+    }
+
+    let query = adminClient
+      .from('invoice_line_items')
+      .select(`
+        id, invoice_id, quantity, unit_price, total_price, description,
+        deal_items(model, storage, grade),
+        invoices!inner(id, invoice_number, issue_date, customer_name, client_id, status)
+      `)
+      .neq('invoices.status', 'CANCELLED')
+
+    if (parsedModel && parsedStorage) {
+      query = query.ilike('description', `%${parsedModel}%${parsedStorage}%`)
+    } else if (parsedModel) {
+      query = query.ilike('description', `%${parsedModel}%`)
+    } else if (desc.trim()) {
+      const cleanDesc = desc.replace(/[#\-\/]/g, ' ').trim().split(/\s+/).slice(0, 3).join('%')
+      query = query.ilike('description', `%${cleanDesc}%`)
+    }
+
+    const { data, error } = await query.order('invoices(issue_date)', { ascending: false }).limit(50)
+
+    if (error) {
+      console.error('getSalesPriceHistoryAction query error:', error)
+      return {
+        queryModel: parsedModel,
+        queryStorage: parsedStorage,
+        queryGrade: parsedGrade,
+        lastSoldPrice: null,
+        lastSoldDate: null,
+        avgSoldPrice: null,
+        minSoldPrice: null,
+        maxSoldPrice: null,
+        totalUnitsSold: 0,
+        totalRevenue: 0,
+        customerLastSoldPrice: null,
+        customerAvgSoldPrice: null,
+        customerUnitsSold: 0,
+        customerName: params.customerName || null,
+        items: []
+      }
+    }
+
+    const items: SalesPriceHistoryItem[] = (data || []).map((row: any) => ({
+      id: row.id,
+      invoice_id: row.invoices?.id,
+      invoice_number: row.invoices?.invoice_number || '-',
+      issue_date: row.invoices?.issue_date ? new Date(row.invoices.issue_date).toISOString().split('T')[0] : '',
+      customer_name: row.invoices?.customer_name || 'Unknown',
+      client_id: row.invoices?.client_id || null,
+      quantity: Number(row.quantity || 0),
+      unit_price: Number(row.unit_price || 0),
+      total_price: Number(row.total_price || (Number(row.quantity || 0) * Number(row.unit_price || 0)) || 0),
+      description: row.description || '',
+      model: row.deal_items?.model || null,
+      storage: row.deal_items?.storage || null,
+      grade: row.deal_items?.grade || null
+    }))
+
+    const totalUnitsSold = items.reduce((sum, it) => sum + it.quantity, 0)
+    const totalRevenue = items.reduce((sum, it) => sum + it.total_price, 0)
+    const prices = items.map(it => it.unit_price).filter(p => p > 0)
+
+    const lastSoldPrice = items.length > 0 ? items[0].unit_price : null
+    const lastSoldDate = items.length > 0 ? items[0].issue_date : null
+    const avgSoldPrice = totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : (prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null)
+    const minSoldPrice = prices.length > 0 ? Math.min(...prices) : null
+    const maxSoldPrice = prices.length > 0 ? Math.max(...prices) : null
+
+    // Customer specific stats
+    const custItems = items.filter(it => 
+      (params.clientId && it.client_id === params.clientId) ||
+      (params.customerName && it.customer_name?.toLowerCase().trim() === params.customerName.toLowerCase().trim())
+    )
+    const customerUnitsSold = custItems.reduce((sum, it) => sum + it.quantity, 0)
+    const customerRevenue = custItems.reduce((sum, it) => sum + it.total_price, 0)
+    const customerLastSoldPrice = custItems.length > 0 ? custItems[0].unit_price : null
+    const customerAvgSoldPrice = customerUnitsSold > 0 ? customerRevenue / customerUnitsSold : null
+
+    return {
+      queryModel: parsedModel,
+      queryStorage: parsedStorage,
+      queryGrade: parsedGrade,
+      lastSoldPrice,
+      lastSoldDate,
+      avgSoldPrice,
+      minSoldPrice,
+      maxSoldPrice,
+      totalUnitsSold,
+      totalRevenue,
+      customerLastSoldPrice,
+      customerAvgSoldPrice,
+      customerUnitsSold,
+      customerName: params.customerName || null,
+      items
+    }
+  } catch (err: any) {
+    console.error('getSalesPriceHistoryAction exception:', err)
+    return {
+      queryModel: params.model || '',
+      queryStorage: params.storage || '',
+      queryGrade: params.grade || '',
+      lastSoldPrice: null,
+      lastSoldDate: null,
+      avgSoldPrice: null,
+      minSoldPrice: null,
+      maxSoldPrice: null,
+      totalUnitsSold: 0,
+      totalRevenue: 0,
+      customerLastSoldPrice: null,
+      customerAvgSoldPrice: null,
+      customerUnitsSold: 0,
+      customerName: params.customerName || null,
+      items: []
+    }
+  }
+}
+
 
