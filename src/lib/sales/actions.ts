@@ -482,6 +482,99 @@ export async function updateLineItemDeal(invoiceId: string, lineItemId: string, 
   return { success: true }
 }
 
+export async function updateLineItemPrice(
+  invoiceId: string,
+  lineItemId: string,
+  newUnitPrice: number
+) {
+  return updateLineItem(invoiceId, lineItemId, { unit_price: newUnitPrice })
+}
+
+export async function updateLineItem(
+  invoiceId: string,
+  lineItemId: string,
+  updates: {
+    unit_price?: number
+    quantity?: number
+    description?: string
+  }
+) {
+  try {
+    const supabase = await createClient()
+
+    const payload: Record<string, any> = {}
+
+    if (updates.unit_price !== undefined) {
+      const price = Number(updates.unit_price)
+      if (isNaN(price) || price < 0) return { error: 'Invalid unit price' }
+      payload.unit_price = price
+    }
+
+    if (updates.description !== undefined) {
+      if (!updates.description.trim()) return { error: 'Description cannot be empty' }
+      payload.description = updates.description.trim()
+    }
+
+    let dealIdToSync: string | null = null
+
+    if (updates.quantity !== undefined) {
+      const qty = parseInt(String(updates.quantity), 10)
+      if (isNaN(qty) || qty <= 0) return { error: 'Quantity must be at least 1' }
+      
+      const { data: currentItem } = await supabase
+        .from('invoice_line_items')
+        .select('deal_id, deal_item_id')
+        .eq('id', lineItemId)
+        .single()
+
+      if (currentItem?.deal_id) {
+        dealIdToSync = currentItem.deal_id
+        const stockCheck = await checkStockAvailability(
+          currentItem.deal_id,
+          currentItem.deal_item_id,
+          qty,
+          lineItemId
+        )
+        if (!stockCheck.available) {
+          return { error: stockCheck.error }
+        }
+      }
+
+      payload.quantity = qty
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return { success: true }
+    }
+
+    const { error } = await supabase
+      .from('invoice_line_items')
+      .update(payload)
+      .eq('id', lineItemId)
+      .eq('invoice_id', invoiceId)
+
+    if (error) {
+      console.error('Error updating line item:', error)
+      return { error: error.message }
+    }
+
+    if (dealIdToSync) {
+      const { syncDealSoldStatus } = await import('@/lib/deals/actions')
+      await syncDealSoldStatus(dealIdToSync)
+    }
+
+    await syncInvoiceStatus(invoiceId, supabase)
+
+    revalidatePath(`/dashboard/sales/${invoiceId}`)
+    revalidatePath('/dashboard/sales')
+    revalidatePath('/dashboard/accounting')
+    return { success: true }
+  } catch (err: any) {
+    console.error('updateLineItem exception:', err)
+    return { error: err.message || 'Failed to update line item' }
+  }
+}
+
 // ── Payments ────────────────────────────────────────────────
 
 async function syncInvoiceStatus(invoiceId: string, supabase: any) {
