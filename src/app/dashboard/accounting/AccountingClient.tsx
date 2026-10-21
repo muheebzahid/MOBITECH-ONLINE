@@ -94,6 +94,9 @@ export type FinancialSummary = {
   wholesaleCogsDevices: number
   wholesaleCogsLogistics: number
   wholesaleRepairCost?: number
+  totalRepairCost?: number
+  wholesaleRoi?: number
+  roi?: number
   onlineCogsDevices: number
   onlineCogsLogistics: number
   grossProfit: number
@@ -511,6 +514,7 @@ export default function AccountingClient({
                   ['Less: Logistics Cost (Deals)', data.wholesaleCogsLogistics],
                   ...((data.wholesaleRepairCost || 0) > 0 ? [['Less: Repair Cost (Deals)', data.wholesaleRepairCost || 0]] : []),
                   ['Wholesale Gross Profit', data.grossProfitWholesale],
+                  ['Wholesale ROI', `${data.wholesaleRoi !== undefined ? data.wholesaleRoi.toFixed(2) + '%' : '-'}`],
                   ['Revibe Invoiced Revenue', data.revenueRevibe ?? data.revenueOnline],
                   ['Less: Cost of Goods (Base Stock)', om.cogsDevices],
                   ['Less: Logistics Cost (Shipping Allocation)', om.cogsLogistics],
@@ -519,10 +523,12 @@ export default function AccountingClient({
                   ['Total Combined Revenue', data.revenue],
                   ['Less: Total Cost of Goods (Base Stock)', data.cogsDevices],
                   ['Less: Total Logistics Charges', data.cogsLogistics],
+                  ...(((data.wholesaleRepairCost || 0) + (om.totalRepairCost || 0)) > 0 ? [['Less: Total Device Repair & Refurbishment Costs', (data.wholesaleRepairCost || 0) + (om.totalRepairCost || 0)]] : []),
                   ['Consolidated Gross Profit', data.grossProfit],
                   ['Plus: Amex Cashback Profit', data.amexProfit],
                   ['Operating Expenses', data.opex],
-                  ['Net Profit / (Loss)', data.netProfit]
+                  ['Net Profit / (Loss)', data.netProfit],
+                  ['Return on Investment (ROI)', `${data.roi !== undefined ? data.roi.toFixed(2) + '%' : '-'}`]
                 ]
                 exportToExcel('mobitech_pnl_statement_export', headers, rows)
               }
@@ -880,6 +886,14 @@ export default function AccountingClient({
                   <span>Wholesale Gross Profit</span>
                   <span>{formatCurrency(data.grossProfitWholesale)}</span>
                 </div>
+                {data.wholesaleRoi !== undefined && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', borderTop: '1px dotted var(--border)', paddingTop: '4px', color: 'var(--text-muted)' }}>
+                    <span>Wholesale ROI</span>
+                    <span style={{ fontWeight: 600, color: data.wholesaleRoi >= 0 ? '#34d399' : '#f87171' }}>
+                      {data.wholesaleRoi >= 0 ? '+' : ''}{data.wholesaleRoi.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* 2. Revibe Online Sales Account */}
@@ -930,6 +944,12 @@ export default function AccountingClient({
                   <span>Less: Total Logistics Charges</span>
                   <span>- {formatCurrency(data.cogsLogistics)}</span>
                 </div>
+                {((data.wholesaleRepairCost || 0) + (om.totalRepairCost || 0)) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '14px' }}>
+                    <span>Less: Total Device Repair & Refurbishment Costs</span>
+                    <span>- {formatCurrency((data.wholesaleRepairCost || 0) + (om.totalRepairCost || 0))}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '16px', color: 'var(--accent-green)', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
                   <span>Consolidated Gross Profit</span>
                   <span>{formatCurrency(data.grossProfit)}</span>
@@ -1050,12 +1070,20 @@ export default function AccountingClient({
               <div style={{ borderBottom: '2px solid var(--border)', paddingBottom: '8px' }} />
 
               {/* Net Profit */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 0', marginTop: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 0 8px 0', marginTop: '8px' }}>
                 <span style={{ fontWeight: 800, fontSize: '20px' }}>Net Profit / (Loss)</span>
                 <span style={{ fontWeight: 800, fontSize: '20px', color: data.netProfit >= 0 ? 'var(--accent-green)' : 'var(--status-red)' }}>
                   {formatCurrency(data.netProfit)}
                 </span>
               </div>
+              {data.roi !== undefined && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 12px 0', borderTop: '1px dashed var(--border)', marginTop: '4px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-muted)' }}>Return on Investment (ROI)</span>
+                  <span style={{ fontWeight: 700, fontSize: '15px', color: data.roi >= 0 ? 'var(--accent-green)' : 'var(--status-red)' }}>
+                    {data.roi >= 0 ? '+' : ''}{data.roi.toFixed(1)}%
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

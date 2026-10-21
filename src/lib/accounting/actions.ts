@@ -320,17 +320,23 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       skuEntry.repairCost += itemRepCost
       skuEntry.totalCost += (itemDevCost + itemLogCost + itemRepCost)
     } else {
-      let itemRepairCost = Number(li.repair_cost || li.deal_items?.repair_cost || 0)
-      if (!itemRepairCost) {
+      let lineRepairCost = 0
+      if (Number(li.repair_cost || 0) > 0) {
+        // Line-item level repair cost is already the total for this line item
+        lineRepairCost = Number(li.repair_cost)
+      } else if (li.deal_items?.repair_cost) {
+        // Deal-level SKU repair cost is per unit
+        lineRepairCost = qty * Number(li.deal_items.repair_cost)
+      } else if (li.deal_id) {
         const dealObj = dealMap.get(li.deal_id)
-        if (dealObj?.items?.length === 1) {
-          itemRepairCost = Number(dealObj.items[0]?.repair_cost || 0)
+        if (dealObj?.items?.length === 1 && dealObj.items[0]?.repair_cost) {
+          lineRepairCost = qty * Number(dealObj.items[0].repair_cost)
         }
       }
       wholesaleCogsDevices += qty * stockPlusFeeCost
       wholesaleCogsLogistics += qty * shippingCostPerUnit
-      wholesaleRepairCost += qty * itemRepairCost
-      wholesaleCogs += qty * (stockPlusFeeCost + shippingCostPerUnit + itemRepairCost)
+      wholesaleRepairCost += lineRepairCost
+      wholesaleCogs += (qty * (stockPlusFeeCost + shippingCostPerUnit)) + lineRepairCost
     }
   })
 
@@ -474,10 +480,15 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
     }
   }
 
+  const totalRepairCost = wholesaleRepairCost + revibeTotalRepairCost
   const grossProfitWholesale = wholesaleRevenue - wholesaleCogs
   const grossProfitOnline = revibeGrossProfit
-  const grossProfit = totalRevenue - (wholesaleCogsDevices + wholesaleCogsLogistics + revibeCogsDevices + revibeCogsLogistics)
+  const grossProfit = totalRevenue - cogs
   const netProfit = totalRevenue - cogs + amexProfit - totalOpex
+
+  const wholesaleRoi = wholesaleCogs > 0 ? (grossProfitWholesale / wholesaleCogs) * 100 : 0
+  const totalInvestment = cogs + totalOpex
+  const totalRoi = totalInvestment > 0 ? (netProfit / totalInvestment) * 100 : (cogs > 0 ? (netProfit / cogs) * 100 : 0)
 
   const amexLimit = settings?.amex_limit || 500000
   const cashLimit = settings?.cash_limit || 300000
@@ -605,12 +616,15 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       wholesaleCogsDevices,
       wholesaleCogsLogistics,
       wholesaleRepairCost,
+      totalRepairCost,
       onlineCogsDevices,
       onlineCogsLogistics,
       grossProfit: grossProfit,
       grossProfitWholesale,
       grossProfitOnline,
       grossProfitRevibe: revibeGrossProfit,
+      wholesaleRoi,
+      roi: totalRoi,
       amexProfit: amexProfit,
       freight: freightExpense,
       opex: totalOpex,
@@ -661,12 +675,15 @@ export async function getFinancialSummary(statementDateFilter?: string, fromDate
       wholesaleCogsDevices: wholesaleCogsDevices * USD_TO_AED,
       wholesaleCogsLogistics: wholesaleCogsLogistics * USD_TO_AED,
       wholesaleRepairCost: wholesaleRepairCost * USD_TO_AED,
+      totalRepairCost: totalRepairCost * USD_TO_AED,
       onlineCogsDevices: onlineCogsDevices * USD_TO_AED,
       onlineCogsLogistics: onlineCogsLogistics * USD_TO_AED,
       grossProfit: grossProfit * USD_TO_AED,
       grossProfitWholesale: grossProfitWholesale * USD_TO_AED,
       grossProfitOnline: grossProfitOnline * USD_TO_AED,
       grossProfitRevibe: revibeGrossProfit * USD_TO_AED,
+      wholesaleRoi,
+      roi: totalRoi,
       amexProfit: amexProfit * USD_TO_AED,
       freight: freightExpense * USD_TO_AED,
       opex: totalOpex * USD_TO_AED,
