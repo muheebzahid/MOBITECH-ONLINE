@@ -19,6 +19,8 @@ import {
   updateInvoiceNumber,
   updateInvoiceRepairCosts,
   getSalesPriceHistoryAction,
+  updateLineItem,
+  updateLineItemPrice,
   type SalesPriceHistorySummary
 } from '@/lib/sales/actions'
 import { useRole } from '@/components/RoleProvider'
@@ -60,6 +62,42 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
   const [isDragging, setIsDragging] = useState(false)
   const [editingLineItem, setEditingLineItem] = useState<string | null>(null)
   const [editDealId, setEditDealId] = useState<string>('')
+
+  // State for editing SKU selling price and quantity directly in invoice
+  const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null)
+  const [editLinePrice, setEditLinePrice] = useState<string>('')
+  const [editLineQty, setEditLineQty] = useState<string>('')
+  const [isSavingLineItem, setIsSavingLineItem] = useState(false)
+
+  const handleSaveLineItemPrice = async (lineItemId: string) => {
+    const price = parseFloat(editLinePrice)
+    const qty = parseInt(editLineQty, 10)
+
+    if (isNaN(price) || price < 0) {
+      alert('Please enter a valid selling price')
+      return
+    }
+
+    if (isNaN(qty) || qty <= 0) {
+      alert('Quantity must be at least 1')
+      return
+    }
+
+    setIsSavingLineItem(true)
+    const res = await updateLineItem(invoice.id, lineItemId, {
+      unit_price: price,
+      quantity: qty
+    })
+    setIsSavingLineItem(false)
+
+    if (res?.error) {
+      alert('Failed to update line item: ' + res.error)
+    } else {
+      setEditingPriceItemId(null)
+      router.refresh()
+    }
+  }
+
   const [isEditingStatus, setIsEditingStatus] = useState(false)
   const [editStatusValue, setEditStatusValue] = useState<string>('')
 
@@ -764,130 +802,281 @@ export default function InvoiceDetailClient({ invoice, deals }: Props) {
             )}
           </div>
 
-          <div className="deals-table-wrap">
-            <table className="deals-table" style={{ border:'none' }}>
-              <thead style={{ borderBottom:'2px solid var(--border)' }}>
-                <tr>
-                  <th style={{paddingLeft:0}}>Description</th>
-                  <th style={{textAlign:'right'}}>Qty</th>
-                  <th style={{textAlign:'right'}}>Unit Price</th>
-                  <th style={{textAlign:'right', paddingRight:0}}>Amount</th>
-                  {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {(invoice.invoice_line_items || []).map((item: any) => {
-                  const costData = getItemCostData(item)
-                  return (
-                    <tr key={item.id}>
-                      <td style={{paddingLeft:0}}>
-                        <div style={{ fontWeight:600 }}>{item.description}</div>
-                        {editingLineItem === item.id ? (
-                          <div style={{ marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <select className="form-input" style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', width: '200px' }} value={editDealId} onChange={e=>setEditDealId(e.target.value)}>
-                              <option value="">No link / Custom item</option>
-                              {deals.map(d => {
-                                if (d.items && d.items.length > 0) {
-                                  return (
-                                    <optgroup key={d.id} label={`${d.deal_number} - ${d.model} (${d.remaining_quantity} avail)`}>
-                                      <option value={d.id}>
-                                        [Whole Deal] {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
-                                      </option>
-                                      {d.items.map((it: any) => (
-                                        <option key={it.id} value={`${d.id}:${it.id}`}>
-                                          {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  )
-                                }
-                                return (
-                                  <option key={d.id} value={d.id}>{d.deal_number} - {d.model} {[d.storage, d.grade, d.carrier].filter(Boolean).join(' ')} ({d.remaining_quantity} avail)</option>
-                                )
-                              })}
-                            </select>
-                            <button className="btn-primary" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => {
-                              const [dId, dItemId] = editDealId.split(':')
-                              handleUpdateLineItemDeal(item.id, dId, dItemId)
-                            }}>Save</button>
-                            <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => setEditingLineItem(null)}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div className="no-print" style={{ fontSize:'11px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px' }}>
-                            <span style={{ color: item.deals ? '#22c55e' : '#f87171' }}>
-                              {item.deals ? `Deal Ref: ${item.deals.deal_number} (${item.deals.model})` : 'No deal linked'}
-                            </span>
-                            {role === 'SUPER_ADMIN' && (
-                              <button className="btn-ghost no-print" style={{ color: 'var(--accent-indigo)', padding: 0, fontSize: '11px' }} onClick={() => { setEditingLineItem(item.id); setEditDealId(item.deal_item_id ? `${item.deal_id}:${item.deal_item_id}` : (item.deal_id || '')); }}>Edit Source</button>
-                            )}
-                            <button
-                              type="button"
-                              className="btn-ghost no-print"
-                              style={{
-                                color: 'var(--accent-cyan, #06b6d4)',
-                                padding: '2px 8px',
-                                fontSize: '11px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: 'rgba(6, 182, 212, 0.08)',
-                                borderRadius: '4px',
-                                border: '1px solid rgba(6, 182, 212, 0.2)',
-                                cursor: 'pointer'
-                              }}
-                              onClick={() => handleOpenPriceHistory({
-                                model: item.deal_items?.model || item.deals?.model,
-                                storage: item.deal_items?.storage || item.deals?.storage,
-                                grade: item.deal_items?.grade || item.deals?.grade,
-                                description: item.description
-                              })}
-                              title="Check past sales prices for this item"
-                            >
-                              <span>📊</span> Check Sales Price History
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{textAlign:'right'}}>{item.quantity}</td>
-                      <td style={{textAlign:'right'}}>
-                        <div>{fmt(item.unit_price)}</div>
-                        {costData.hasCost && (
-                          <div className="no-print" style={{ fontSize: '11px', marginTop: '3px', lineHeight: 1.2 }}>
-                            <span style={{ color: 'var(--text-muted)' }}>Cost: {fmt(costData.unitCost)}</span>
-                            <span style={{ 
-                              marginLeft: '6px', 
-                              fontWeight: 600, 
-                              color: costData.profitPerUnit >= 0 ? '#22c55e' : '#ef4444' 
-                            }}>
-                              {costData.profitPerUnit >= 0 ? '+' : ''}{fmt(costData.profitPerUnit)} ({costData.marginPct.toFixed(1)}%)
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{textAlign:'right', paddingRight:0, fontWeight:600}}>{fmt(item.total_price)}</td>
-                      {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
-                        <td style={{width:'30px'}} className="no-print"><button className="btn-ghost" style={{color:'#f87171', padding:'4px 8px'}} onClick={()=>handleRemoveLineItem(item.id)}>✕</button></td>
-                      )}
+          {(() => {
+            const canEditItems = invoice.status !== 'CANCELLED' && (role === 'SUPER_ADMIN' || ['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status)) && role !== 'VIEW_ONLY'
+
+            return (
+              <div className="deals-table-wrap">
+                <table className="deals-table" style={{ border:'none' }}>
+                  <thead style={{ borderBottom:'2px solid var(--border)' }}>
+                    <tr>
+                      <th style={{paddingLeft:0}}>Description</th>
+                      <th style={{textAlign:'right'}}>Qty</th>
+                      <th style={{textAlign:'right'}}>Unit Price</th>
+                      <th style={{textAlign:'right', paddingRight:0}}>Amount</th>
+                      {canEditItems && <th style={{width: '75px', textAlign:'right'}} className="no-print"></th>}
                     </tr>
-                  )
-                })}
-                {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
-                  <tr className="no-print">
-                    <td colSpan={5} style={{paddingLeft:0}}>
-                      <button className="btn-ghost" style={{fontSize:'12px', padding:'6px 12px', color:'var(--accent-indigo)'}} onClick={()=>setShowLineItem(true)}>+ Add Line Item</button>
-                    </td>
-                  </tr>
-                )}
-                <tr>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', fontSize: '12px' }}>TOTAL QTY:</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, fontSize: '13px' }}>
-                    {(invoice.invoice_line_items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0)}
-                  </td>
-                  <td colSpan={['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) ? 3 : 2}></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {(invoice.invoice_line_items || []).map((item: any) => {
+                      const costData = getItemCostData(item)
+                      const isEditingThisItem = editingPriceItemId === item.id
+
+                      return (
+                        <tr key={item.id} style={isEditingThisItem ? { background: 'rgba(99, 102, 241, 0.05)' } : undefined}>
+                          <td style={{paddingLeft:0}}>
+                            <div style={{ fontWeight:600 }}>{item.description}</div>
+                            {editingLineItem === item.id ? (
+                              <div style={{ marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <select className="form-input" style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', width: '200px' }} value={editDealId} onChange={e=>setEditDealId(e.target.value)}>
+                                  <option value="">No link / Custom item</option>
+                                  {deals.map(d => {
+                                    if (d.items && d.items.length > 0) {
+                                      return (
+                                        <optgroup key={d.id} label={`${d.deal_number} - ${d.model} (${d.remaining_quantity} avail)`}>
+                                          <option value={d.id}>
+                                            [Whole Deal] {d.deal_number} - {d.model} ({d.remaining_quantity} avail)
+                                          </option>
+                                          {d.items.map((it: any) => (
+                                            <option key={it.id} value={`${d.id}:${it.id}`}>
+                                              {it.model} {it.storage} {it.grade || ''} ({it.remaining_quantity} avail)
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                      )
+                                    }
+                                    return (
+                                      <option key={d.id} value={d.id}>{d.deal_number} - {d.model} {[d.storage, d.grade, d.carrier].filter(Boolean).join(' ')} ({d.remaining_quantity} avail)</option>
+                                    )
+                                  })}
+                                </select>
+                                <button className="btn-primary" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => {
+                                  const [dId, dItemId] = editDealId.split(':')
+                                  handleUpdateLineItemDeal(item.id, dId, dItemId)
+                                }}>Save</button>
+                                <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => setEditingLineItem(null)}>Cancel</button>
+                              </div>
+                            ) : (
+                              <div className="no-print" style={{ fontSize:'11px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px' }}>
+                                <span style={{ color: item.deals ? '#22c55e' : '#f87171' }}>
+                                  {item.deals ? `Deal Ref: ${item.deals.deal_number} (${item.deals.model})` : 'No deal linked'}
+                                </span>
+                                {role === 'SUPER_ADMIN' && (
+                                  <button className="btn-ghost no-print" style={{ color: 'var(--accent-indigo)', padding: 0, fontSize: '11px' }} onClick={() => { setEditingLineItem(item.id); setEditDealId(item.deal_item_id ? `${item.deal_id}:${item.deal_item_id}` : (item.deal_id || '')); }}>Edit Source</button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn-ghost no-print"
+                                  style={{
+                                    color: 'var(--accent-cyan, #06b6d4)',
+                                    padding: '2px 8px',
+                                    fontSize: '11px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    background: 'rgba(6, 182, 212, 0.08)',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(6, 182, 212, 0.2)',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={() => handleOpenPriceHistory({
+                                    model: item.deal_items?.model || item.deals?.model,
+                                    storage: item.deal_items?.storage || item.deals?.storage,
+                                    grade: item.deal_items?.grade || item.deals?.grade,
+                                    description: item.description
+                                  })}
+                                  title="Check past sales prices for this item"
+                                >
+                                  <span>📊</span> Check Sales Price History
+                                </button>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* QTY Column */}
+                          <td style={{textAlign:'right'}}>
+                            {isEditingThisItem ? (
+                              <input
+                                type="number"
+                                min="1"
+                                className="form-input"
+                                style={{ width: '60px', padding: '3px 6px', fontSize: '12px', textAlign: 'right', height: 'auto', display: 'inline-block' }}
+                                value={editLineQty}
+                                onChange={e => setEditLineQty(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleSaveLineItemPrice(item.id)
+                                  if (e.key === 'Escape') setEditingPriceItemId(null)
+                                }}
+                              />
+                            ) : (
+                              item.quantity
+                            )}
+                          </td>
+
+                          {/* UNIT PRICE (SELLING PRICE) Column */}
+                          <td style={{textAlign:'right'}}>
+                            {isEditingThisItem ? (
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    className="form-input"
+                                    style={{ width: '90px', padding: '3px 6px', fontSize: '13px', textAlign: 'right', fontWeight: 600, height: 'auto' }}
+                                    value={editLinePrice}
+                                    onChange={e => setEditLinePrice(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') handleSaveLineItemPrice(item.id)
+                                      if (e.key === 'Escape') setEditingPriceItemId(null)
+                                    }}
+                                  />
+                                </div>
+                                {/* Live Margin Calculation as user types the new selling price */}
+                                {costData.hasCost && (
+                                  <div className="no-print" style={{ fontSize: '10px', marginTop: '2px', lineHeight: 1.2 }}>
+                                    {(() => {
+                                      const p = parseFloat(editLinePrice) || 0
+                                      const profit = p - costData.unitCost
+                                      const margin = p > 0 ? (profit / p) * 100 : 0
+                                      return (
+                                        <span style={{ color: profit >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+                                          Live: {profit >= 0 ? '+' : ''}{fmt(profit)} ({margin.toFixed(1)}%)
+                                        </span>
+                                      )
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                                  <span style={{ fontWeight: 600 }}>{fmt(item.unit_price)}</span>
+                                  {canEditItems && (
+                                    <button
+                                      type="button"
+                                      className="btn-ghost no-print"
+                                      style={{
+                                        padding: '1px 5px',
+                                        fontSize: '11px',
+                                        color: 'var(--accent-indigo)',
+                                        borderRadius: '4px',
+                                        lineHeight: 1,
+                                        cursor: 'pointer'
+                                      }}
+                                      onClick={() => {
+                                        setEditingPriceItemId(item.id)
+                                        setEditLinePrice(String(item.unit_price ?? 0))
+                                        setEditLineQty(String(item.quantity ?? 1))
+                                      }}
+                                      title="Change selling price"
+                                    >
+                                      ✏️ Edit
+                                    </button>
+                                  )}
+                                </div>
+                                {costData.hasCost && (
+                                  <div className="no-print" style={{ fontSize: '11px', marginTop: '3px', lineHeight: 1.2 }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Cost: {fmt(costData.unitCost)}</span>
+                                    <span style={{ 
+                                      marginLeft: '6px', 
+                                      fontWeight: 600, 
+                                      color: costData.profitPerUnit >= 0 ? '#22c55e' : '#ef4444' 
+                                    }}>
+                                      {costData.profitPerUnit >= 0 ? '+' : ''}{fmt(costData.profitPerUnit)} ({costData.marginPct.toFixed(1)}%)
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* AMOUNT Column */}
+                          <td style={{textAlign:'right', paddingRight:0, fontWeight:600}}>
+                            {isEditingThisItem ? (
+                              fmt((parseFloat(editLineQty) || 0) * (parseFloat(editLinePrice) || 0))
+                            ) : (
+                              fmt(item.total_price)
+                            )}
+                          </td>
+
+                          {/* ACTIONS Column */}
+                          {canEditItems && (
+                            <td style={{width: isEditingThisItem ? '85px' : '45px', textAlign: 'right'}} className="no-print">
+                              {isEditingThisItem ? (
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-primary"
+                                    style={{ padding: '2px 8px', fontSize: '11px', height: '26px' }}
+                                    disabled={isSavingLineItem}
+                                    onClick={() => handleSaveLineItemPrice(item.id)}
+                                    title="Save changes"
+                                  >
+                                    {isSavingLineItem ? '...' : '✓'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-ghost"
+                                    style={{ padding: '2px 6px', fontSize: '11px', height: '26px', border: '1px solid var(--border)' }}
+                                    onClick={() => setEditingPriceItemId(null)}
+                                    title="Cancel"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-ghost"
+                                    style={{ color: 'var(--accent-indigo)', padding: '4px 6px', fontSize: '12px' }}
+                                    onClick={() => {
+                                      setEditingPriceItemId(item.id)
+                                      setEditLinePrice(String(item.unit_price ?? 0))
+                                      setEditLineQty(String(item.quantity ?? 1))
+                                    }}
+                                    title="Edit selling price & quantity"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-ghost"
+                                    style={{color:'#f87171', padding:'4px 6px', fontSize: '12px'}}
+                                    onClick={()=>handleRemoveLineItem(item.id)}
+                                    title="Delete line item"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                    {['DRAFT', 'ISSUED', 'PARTIAL'].includes(invoice.status) && role !== 'VIEW_ONLY' && (
+                      <tr className="no-print">
+                        <td colSpan={canEditItems ? 5 : 4} style={{paddingLeft:0}}>
+                          <button className="btn-ghost" style={{fontSize:'12px', padding:'6px 12px', color:'var(--accent-indigo)'}} onClick={()=>setShowLineItem(true)}>+ Add Line Item</button>
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', fontSize: '12px' }}>TOTAL QTY:</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, fontSize: '13px' }}>
+                        {(invoice.invoice_line_items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0)}
+                      </td>
+                      <td colSpan={canEditItems ? 3 : 2}></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
 
           {/* Model Repair Cost Breakdown Table */}
           {modelGroups.length > 0 && (
